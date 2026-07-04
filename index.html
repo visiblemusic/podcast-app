@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tape — simple recorder</title>
+<style>
+  :root {
+    --bg: #0c0b0a;
+    --panel: #1c1a17;
+    --border: #34302a;
+    --text: #ede4d3;
+    --dim: #948a78;
+    --amber: #e8a33d;
+    --red: #c0392b;
+    --red-dim: rgba(192,57,43,0.35);
+    --teal: #2f4a48;
+    --teal-light: #cde8e0;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 15px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--amber); margin: 0 0 4px; }
+  .sub { font-size: 12px; color: var(--dim); margin: 0 0 24px; }
+  .notice {
+    display: flex; gap: 8px; align-items: flex-start;
+    background: rgba(192,57,43,0.12); border: 1px solid var(--red);
+    color: #f0c9c0; font-size: 13px; padding: 10px 12px; border-radius: 8px;
+    margin-bottom: 20px; display: none;
+  }
+  .notice.show { display: flex; }
+  .transport {
+    display: flex; align-items: center; gap: 18px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px; margin-bottom: 28px;
+  }
+  #recordBtn {
+    width: 62px; height: 62px; border-radius: 50%;
+    border: none; flex-shrink: 0; cursor: pointer;
+    background: var(--red); color: var(--text);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; transition: background 0.15s;
+  }
+  #recordBtn.recording { background: var(--amber); color: #1c1a17; }
+  #recordBtn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .transport-info { flex: 1; min-width: 0; }
+  #timer { font-size: 22px; font-variant-numeric: tabular-nums; }
+  .meter-track { margin-top: 8px; height: 8px; width: 100%; background: var(--border); border-radius: 4px; overflow: hidden; }
+  #meterFill { height: 100%; width: 0%; background: var(--amber); }
+  #status { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; }
+  .section-label { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 8px; }
+  #timelineOuter {
+    width: 100%; overflow-x: auto;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; margin-bottom: 28px;
+  }
+  #timelineInner { position: relative; padding: 14px 10px; }
+  #ruler { position: relative; height: 16px; margin-bottom: 10px; border-bottom: 1px solid var(--border); }
+  .tick { position: absolute; top: 0; bottom: 0; width: 1px; background: #524c40; }
+  .tick-label { position: absolute; top: -1px; left: 4px; font-size: 9px; color: var(--dim); }
+  #track { position: relative; height: 40px; }
+  .empty-hint { font-size: 12px; color: #514c40; position: absolute; left: 0; top: 6px; }
+  .take-block {
+    position: absolute; top: 0; height: 40px; border-radius: 6px;
+    background: var(--teal); border: 1px solid #3d5b58; color: var(--teal-light);
+    display: flex; align-items: center; gap: 5px; padding: 0 8px;
+    cursor: pointer; font-size: 10px; overflow: hidden; white-space: nowrap;
+  }
+  .take-block.playing { background: var(--amber); border-color: var(--amber); color: #1c1a17; }
+  .live-block { position: absolute; top: 0; height: 40px; border-radius: 6px; background: var(--red-dim); border: 1px solid var(--red); }
+  #takesList { display: flex; flex-direction: column; gap: 8px; }
+  .take-row {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 8px 12px;
+  }
+  .icon-btn {
+    width: 32px; height: 32px; border-radius: 50%; border: none; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 13px;
+  }
+  .icon-btn.play { background: var(--teal); color: var(--teal-light); }
+  .icon-btn.ghost { background: transparent; color: var(--dim); }
+  .icon-btn.ghost:hover { background: var(--border); color: var(--text); }
+  .take-meta { flex: 1; min-width: 0; font-size: 13px; }
+  .take-meta .sub-meta { font-size: 10px; color: var(--dim); margin-top: 2px; }
+  .no-takes { font-size: 12px; color: #514c40; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Tape</h1>
+  <p class="sub">simple recorder — record takes, play them back</p>
+
+  <div class="notice" id="notice"></div>
+
+  <div class="transport">
+    <button id="recordBtn" aria-label="Record">●</button>
+    <div class="transport-info">
+      <div id="timer">00:00.0</div>
+      <div class="meter-track"><div id="meterFill"></div></div>
+      <div id="status">ready</div>
+    </div>
+  </div>
+
+  <div class="section-label">Timeline</div>
+  <div id="timelineOuter">
+    <div id="timelineInner">
+      <div id="ruler"></div>
+      <div id="track">
+        <span class="empty-hint" id="emptyHint">no takes yet — press record</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-label">Takes</div>
+  <div id="takesList">
+    <div class="no-takes" id="noTakesMsg">Recorded takes will appear here.</div>
+  </div>
+</div>
+
+<script>
+const PPS = 40;
+let stream = null, mediaRecorder = null, chunks = [];
+let audioCtx = null, analyser = null, rafId = null;
+let isRecording = false, recordStartTime = 0, sessionStart = null, elapsed = 0;
+let takes = []; // {id, url, blob, start, duration}
+let currentAudio = null, playingId = null;
+let elapsedInterval = null;
+
+const recordBtn = document.getElementById('recordBtn');
+const timerEl = document.getElementById('timer');
+const meterFill = document.getElementById('meterFill');
+const statusEl = document.getElementById('status');
+const notice = document.getElementById('notice');
+const ruler = document.getElementById('ruler');
+const track = document.getElementById('track');
+const emptyHint = document.getElementById('emptyHint');
+const takesList = document.getElementById('takesList');
+const noTakesMsg = document.getElementById('noTakesMsg');
+
+function showNotice(msg) {
+  notice.textContent = msg;
+  notice.classList.add('show');
+}
+
+function fmt(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  const ms = Math.floor((sec % 1) * 10);
+  return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0') + '.' + ms;
+}
+
+if (!navigator.mediaDevices || !window.MediaRecorder) {
+  showNotice("This browser doesn't support audio recording. Try Safari or Chrome, and make sure the page is served over HTTPS.");
+  recordBtn.disabled = true;
+}
+
+function tickLevel() {
+  if (!analyser) return;
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteTimeDomainData(data);
+  let sum = 0;
+  for (let i = 0; i < data.length; i++) {
+    const v = (data[i] - 128) / 128;
+    sum += v * v;
+  }
+  const rms = Math.sqrt(sum / data.length);
+  meterFill.style.width = Math.min(1, rms * 4) * 100 + '%';
+  rafId = requestAnimationFrame(tickLevel);
+}
+
+async function startRecording() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    showNotice("Microphone access was blocked or failed. Check the site's permission settings and that this page is loaded over HTTPS.");
+    return;
+  }
+
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const source = audioCtx.createMediaStreamSource(stream);
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 512;
+  source.connect(analyser);
+  tickLevel();
+
+  let mimeType = '';
+  if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
+  else if (MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
+
+  mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+  chunks = [];
+
+  if (sessionStart === null) sessionStart = Date.now();
+  const takeStart = (Date.now() - sessionStart) / 1000;
+
+  mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+  mediaRecorder.onstop = () => {
+    const blob = new Blob(chunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+    const url = URL.createObjectURL(blob);
+    const duration = (Date.now() - recordStartTime) / 1000;
+    takes.push({ id: 't' + Date.now(), url, blob, start: takeStart, duration });
+    elapsed = 0;
+    cancelAnimationFrame(rafId);
+    meterFill.style.width = '0%';
+    analyser = null;
+    if (audioCtx) { audioCtx.close(); audioCtx = null; }
+    stream.getTracks().forEach(t => t.stop());
+    renderAll();
+  };
+
+  recordStartTime = Date.now();
+  mediaRecorder.start();
+  isRecording = true;
+  recordBtn.classList.add('recording');
+  recordBtn.textContent = '■';
+  statusEl.textContent = 'recording — input level';
+
+  elapsedInterval = setInterval(() => {
+    elapsed = (Date.now() - recordStartTime) / 1000;
+    timerEl.textContent = fmt(elapsed);
+    renderTrack();
+  }, 50);
+}
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  isRecording = false;
+  recordBtn.classList.remove('recording');
+  recordBtn.textContent = '●';
+  statusEl.textContent = 'ready';
+  clearInterval(elapsedInterval);
+  timerEl.textContent = '00:00.0';
+}
+
+recordBtn.addEventListener('click', () => {
+  if (isRecording) stopRecording(); else startRecording();
+});
+
+function togglePlay(take) {
+  if (playingId === take.id) {
+    currentAudio && currentAudio.pause();
+    playingId = null;
+    renderAll();
+    return;
+  }
+  if (currentAudio) currentAudio.pause();
+  currentAudio = new Audio(take.url);
+  currentAudio.onended = () => { playingId = null; renderAll(); };
+  currentAudio.play();
+  playingId = take.id;
+  renderAll();
+}
+
+function deleteTake(id) {
+  takes = takes.filter(t => t.id !== id);
+  if (playingId === id) { currentAudio && currentAudio.pause(); playingId = null; }
+  renderAll();
+}
+
+function downloadTake(take, idx) {
+  const ext = take.blob.type.includes('mp4') ? 'm4a' : 'webm';
+  const a = document.createElement('a');
+  a.href = take.url;
+  a.download = 'take-' + (idx + 1) + '.' + ext;
+  a.click();
+}
+
+function renderTrack() {
+  const totalDuration = Math.max(8, ...takes.map(t => t.start + t.duration), isRecording ? elapsed : 0);
+  const tickCount = Math.ceil(totalDuration);
+  const width = totalDuration * PPS + 40;
+  document.getElementById('timelineInner').style.width = width + 'px';
+  document.getElementById('timelineInner').style.minWidth = '100%';
+
+  ruler.innerHTML = '';
+  for (let i = 0; i <= tickCount; i++) {
+    const tick = document.createElement('div');
+    tick.className = 'tick';
+    tick.style.left = (i * PPS) + 'px';
+    ruler.appendChild(tick);
+    if (i % 5 === 0) {
+      const label = document.createElement('span');
+      label.className = 'tick-label';
+      label.textContent = i + 's';
+      label.style.left = (i * PPS + 4) + 'px';
+      label.style.position = 'absolute';
+      ruler.appendChild(label);
+    }
+  }
+
+  track.querySelectorAll('.take-block, .live-block').forEach(el => el.remove());
+  emptyHint.style.display = (takes.length === 0 && !isRecording) ? 'block' : 'none';
+
+  takes.forEach((t, idx) => {
+    const block = document.createElement('div');
+    block.className = 'take-block' + (playingId === t.id ? ' playing' : '');
+    block.style.left = (t.start * PPS) + 'px';
+    block.style.width = Math.max(t.duration * PPS, 28) + 'px';
+    block.title = 'Take ' + (idx + 1) + ' — ' + fmt(t.duration);
+    block.textContent = (playingId === t.id ? '⏸ ' : '▶ ') + (idx + 1);
+    block.addEventListener('click', () => togglePlay(t));
+    track.appendChild(block);
+  });
+
+  if (isRecording) {
+    const live = document.createElement('div');
+    live.className = 'live-block';
+    const start = sessionStart === null ? 0 : (recordStartTime - sessionStart) / 1000;
+    live.style.left = (start * PPS) + 'px';
+    live.style.width = Math.max(elapsed * PPS, 4) + 'px';
+    track.appendChild(live);
+  }
+}
+
+function renderTakesList() {
+  takesList.querySelectorAll('.take-row').forEach(el => el.remove());
+  noTakesMsg.style.display = takes.length === 0 ? 'block' : 'none';
+
+  takes.forEach((t, idx) => {
+    const row = document.createElement('div');
+    row.className = 'take-row';
+
+    const playBtn = document.createElement('button');
+    playBtn.className = 'icon-btn play';
+    playBtn.textContent = playingId === t.id ? '⏸' : '▶';
+    playBtn.addEventListener('click', () => togglePlay(t));
+
+    const meta = document.createElement('div');
+    meta.className = 'take-meta';
+    meta.innerHTML = 'Take ' + (idx + 1) + '<div class="sub-meta">starts ' + fmt(t.start) + ' · duration ' + fmt(t.duration) + '</div>';
+
+    const dlBtn = document.createElement('button');
+    dlBtn.className = 'icon-btn ghost';
+    dlBtn.textContent = '⬇';
+    dlBtn.addEventListener('click', () => downloadTake(t, idx));
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'icon-btn ghost';
+    delBtn.textContent = '✕';
+    delBtn.addEventListener('click', () => deleteTake(t.id));
+
+    row.appendChild(playBtn);
+    row.appendChild(meta);
+    row.appendChild(dlBtn);
+    row.appendChild(delBtn);
+    takesList.appendChild(row);
+  });
+}
+
+function renderAll() {
+  renderTrack();
+  renderTakesList();
+}
+
+renderAll();
+</script>
+</body>
+</html>
