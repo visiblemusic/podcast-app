@@ -12,7 +12,8 @@
   }
   * { box-sizing:border-box; -webkit-user-select:none; user-select:none; }
   html,body { margin:0; padding:0; background:var(--bg); color:var(--text);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; -webkit-tap-highlight-color:transparent; }
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; -webkit-tap-highlight-color:transparent;
+    touch-action: manipulation; }
   .wrap { max-width:900px; margin:0 auto; padding:0 14px 48px; }
   h1 { font-size:15px; letter-spacing:.15em; text-transform:uppercase; color:var(--amber); margin:0 0 4px; }
   .sub { font-size:12px; color:var(--dim); margin:0 0 18px; }
@@ -43,14 +44,15 @@
   .section-row { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px; }
   .section-label { font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; }
   .v-divider { width:1px; height:24px; background:var(--border); flex-shrink:0; }
+  .section-divider { border:none; border-top:1px solid var(--border); margin:14px 0; }
   #addTrackBtn { background:var(--panel); border:1px solid var(--border); color:var(--amber);
     font-size:11px; padding:4px 10px; border-radius:6px; cursor:pointer; text-transform:uppercase; letter-spacing:.05em; }
 
   .mixer-ruler-row { display:flex; border:1px solid var(--border); border-bottom:none; border-radius:12px 12px 0 0; overflow:hidden; background:var(--panel); }
-  .headers-col-spacer { width:140px; flex-shrink:0; border-right:1px solid var(--border); }
+  .headers-col-spacer { width:170px; flex-shrink:0; border-right:1px solid var(--border); }
   #rulerOuter { flex:1; overflow:hidden; position:relative; }
   .mixer { display:flex; border:1px solid var(--border); border-top:none; border-radius:0 0 12px 12px; overflow:hidden; }
-  .headers-col { width:140px; flex-shrink:0; background:var(--panel); border-right:1px solid var(--border); }
+  .headers-col { width:170px; flex-shrink:0; background:var(--panel); border-right:1px solid var(--border); }
   .track-header { height:var(--row-h); border-bottom:1px solid var(--border); padding:8px 8px;
     display:flex; flex-direction:column; justify-content:flex-start; gap:8px; }
   .track-header:last-child { border-bottom:none; }
@@ -110,7 +112,8 @@
     <div class="notice" id="notice"></div>
 
     <div class="transport" style="flex-wrap:wrap;">
-      <div class="tape-title-block"><div class="tape-title">Tape</div><div class="tape-version" id="versionTag">v10.2</div></div>
+      <div class="tape-title-block"><div class="tape-title">Tape</div><div class="tape-version" id="versionTag">v10.4</div></div>
+      <div class="v-divider" style="height:36px;"></div>
       <button id="toStartBtn" class="tbtn" style="font-size:16px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back to start">|◀</button>
       <button id="skipBackBtn" class="tbtn" style="font-size:12px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back 10 seconds">-10s</button>
       <button id="recordBtn" class="tbtn" aria-label="Record">●</button>
@@ -118,25 +121,29 @@
       <button id="skipFwdBtn" class="tbtn" style="font-size:12px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Forward 10 seconds">+10s</button>
       <button id="undoBtn" class="tbtn" style="background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Undo" disabled><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg></button>
       <button id="redoBtn" class="tbtn" style="background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Redo" disabled><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z"/></svg></button>
+      <div class="v-divider" style="height:36px;"></div>
       <div id="timer" class="timer-inline">00:00.0</div>
+      <div class="v-divider" style="height:36px;"></div>
       <div class="meter-vertical"><div id="meterFill"></div></div>
       <div id="gainKnob" class="gain-knob" aria-label="Input gain"><div id="gainKnobIndicator" class="gain-knob-indicator"></div></div>
       <div id="savedTag">saved</div>
     </div>
+    <hr class="section-divider">
 
     <div class="section-row">
       <button id="projectMenuBtn" style="font-size:14px; padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--amber);">Project ▾</button>
       <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-        <button id="followBtn" style="font-size:13px; padding:8px 14px; border-radius:8px; border:1px solid var(--amber); background:var(--amber); color:#1c1a17; text-transform:uppercase; letter-spacing:.03em;">Follow</button>
-        <button id="timeSelectionBtn" style="font-size:12px; padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text); text-transform:uppercase; letter-spacing:.03em;">Time Selection</button>
+        <button id="followBtn" style="height:44px; font-size:13px; padding:0 14px; border-radius:8px; border:1px solid var(--amber); background:var(--amber); color:#1c1a17; text-transform:uppercase; letter-spacing:.03em;">Follow</button>
+        <button id="timeSelectionBtn" style="height:44px; font-size:12px; padding:0 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text); text-transform:uppercase; letter-spacing:.03em;">Time Selection</button>
         <div class="v-divider"></div>
         <button id="zoomOutBtn" style="width:44px; height:44px; padding:0; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text); display:flex; align-items:center; justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="2.5" fill="none"/><line x1="15" y1="15" x2="21" y2="21" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
         <button id="zoomInBtn" style="width:44px; height:44px; padding:0; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text); display:flex; align-items:center; justify-content:center;"><svg width="24" height="24" viewBox="0 0 24 24"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="2.5" fill="none"/><line x1="15" y1="15" x2="21" y2="21" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
         <div class="v-divider"></div>
-        <button id="addTrackBtn" style="font-size:14px; padding:8px 14px;">+ Add track</button>
+        <button id="addTrackBtn" style="height:44px; font-size:14px; padding:0 14px;">+ Add track</button>
       </div>
       <input type="file" id="importFileInput" accept="application/json,.json" style="display:none;">
     </div>
+    <hr class="section-divider">
 
     <div class="mixer-ruler-row">
       <div class="headers-col-spacer"></div>
@@ -175,6 +182,12 @@
 
 <script>
 let PPS = 40;
+// Block Safari's pinch-zoom gesture. touch-action:manipulation (in CSS) is the
+// primary defense; these are backups since Safari doesn't always fully honor it
+// in a plain browser tab (Home Screen web app mode is more reliable here).
+document.addEventListener('gesturestart', (e) => e.preventDefault());
+document.addEventListener('gesturechange', (e) => e.preventDefault());
+document.addEventListener('touchmove', (e) => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
 const MIN_CLIP_DUR = 0.04;
 const ROW_H_JS = 64;
 
@@ -978,17 +991,30 @@ function play() {
         src.onended = () => { try{fadeGain.disconnect();}catch(e){} try{src.disconnect();}catch(e){} };
         src.start(startTime, startOffset, startDur);
         fadeGain.gain.cancelScheduledValues(playStartCtxTime);
-        const clipStartCtx = c.start >= playheadPos ? playStartCtxTime + (c.start - playheadPos) : playStartCtxTime;
         const clipEndCtx = playStartCtxTime + (c.start + c.duration - playheadPos);
-        if (fadeIn > 0 && c.start >= playheadPos) {
-          fadeGain.gain.setValueAtTime(0, clipStartCtx);
-          fadeGain.gain.linearRampToValueAtTime(1, clipStartCtx + fadeIn);
+        const fadeInEndAbs = c.start + fadeIn;
+        const fadeOutStartAbs = c.start + c.duration - fadeOut;
+        if (fadeIn > 0 && playheadPos < fadeInEndAbs) {
+          const fadeInEndCtx = playStartCtxTime + (fadeInEndAbs - playheadPos);
+          if (playheadPos <= c.start) {
+            const clipStartCtx = playStartCtxTime + (c.start - playheadPos);
+            fadeGain.gain.setValueAtTime(0, clipStartCtx);
+          } else {
+            const progress = Math.max(0, Math.min(1, (playheadPos - c.start) / fadeIn));
+            fadeGain.gain.setValueAtTime(progress, playStartCtxTime);
+          }
+          fadeGain.gain.linearRampToValueAtTime(1, fadeInEndCtx);
         } else {
           fadeGain.gain.setValueAtTime(1, playStartCtxTime);
         }
-        if (fadeOut > 0) {
-          const fadeOutStart = Math.max(clipEndCtx - fadeOut, playStartCtxTime);
-          fadeGain.gain.setValueAtTime(1, fadeOutStart);
+        if (fadeOut > 0 && playheadPos < c.start + c.duration) {
+          if (playheadPos <= fadeOutStartAbs) {
+            const fadeOutStartCtx = playStartCtxTime + (fadeOutStartAbs - playheadPos);
+            fadeGain.gain.setValueAtTime(1, fadeOutStartCtx);
+          } else {
+            const progress = Math.max(0, Math.min(1, (playheadPos - fadeOutStartAbs) / fadeOut));
+            fadeGain.gain.setValueAtTime(1 - progress, playStartCtxTime);
+          }
           fadeGain.gain.linearRampToValueAtTime(0, clipEndCtx);
         }
       } else {
@@ -1049,17 +1075,23 @@ function showContextMenu(x, y, items, align) {
   contextMenuEl = document.createElement('div');
   const transform = align === 'below' ? 'translate(0, 0)' : 'translate(-50%,-110%)';
   contextMenuEl.style.cssText = 'position:fixed; left:'+x+'px; top:'+y+'px; transform:'+transform+'; max-height:70vh; overflow-y:auto;'+
-    'background:#2a2721; border:1px solid #f4d03f; border-radius:8px; padding:6px; display:flex; flex-direction:row; flex-wrap:wrap; gap:4px; max-width:90vw; z-index:41; box-shadow:0 4px 14px rgba(0,0,0,.6);';
+    'background:#2a2721; border:1px solid #f4d03f; border-radius:8px; padding:6px; display:flex; flex-direction:row; flex-wrap:nowrap; gap:4px; z-index:41; box-shadow:0 4px 14px rgba(0,0,0,.6);';
   items.forEach(item => {
     const btn = document.createElement('button');
     btn.textContent = item.label;
     btn.style.cssText = 'background:'+(item.danger?'var(--red)':'var(--teal)')+'; color:'+(item.danger?'var(--text)':'var(--teal-light)')+
-      '; border:none; border-radius:5px; font-size:13px; padding:9px 18px; cursor:pointer; white-space:nowrap; text-align:left;';
+      '; border:none; border-radius:5px; font-size:13px; padding:9px 18px; cursor:pointer; white-space:nowrap; text-align:left; flex-shrink:0;';
     btn.addEventListener('pointerdown', e=>e.stopPropagation());
     btn.addEventListener('click', (e) => { e.stopPropagation(); closeContextMenu(); item.action(); });
     contextMenuEl.appendChild(btn);
   });
   document.body.appendChild(contextMenuEl);
+  const rect = contextMenuEl.getBoundingClientRect();
+  const margin = 8;
+  let shiftX = 0;
+  if (rect.right > window.innerWidth - margin) shiftX = (window.innerWidth - margin) - rect.right;
+  if (rect.left + shiftX < margin) shiftX = margin - rect.left;
+  if (shiftX !== 0) contextMenuEl.style.left = (x + shiftX) + 'px';
 }
 function showClipContextMenu(trackId, clipId, x, y) {
   const t = tracks.find(t=>t.id===trackId);
@@ -1246,12 +1278,7 @@ function onClipPointerDown(e, trackId, clip) {
   if (timeSelectionMode) { onSelectionPointerDown(e); return; }
   closeContextMenu();
   if (activeEditClipId && activeEditClipId !== clip.id) exitEditMode();
-  clipPress = { trackId, clipId: clip.id, startX:e.clientX, startY:e.clientY, moved:false, longPressFired:false };
-  clipPress.timer = setTimeout(() => {
-    if (!clipPress || clipPress.moved) return;
-    clipPress.longPressFired = true;
-    showClipContextMenu(trackId, clip.id, clipPress.startX, clipPress.startY);
-  }, LONG_PRESS_MS);
+  clipPress = { trackId, clipId: clip.id, startX:e.clientX, startY:e.clientY, moved:false };
 }
 function onEmptyLanePointerDown(e, trackId) {
   if (timeSelectionMode) { onSelectionPointerDown(e); return; }
@@ -1269,7 +1296,6 @@ window.addEventListener('pointermove', (e) => {
     const dx = e.clientX-clipPress.startX, dy = e.clientY-clipPress.startY;
     if (Math.hypot(dx,dy) > MOVE_THRESHOLD) {
       clipPress.moved = true;
-      clearTimeout(clipPress.timer);
       const isBeingEdited = activeEditClipId === clipPress.clipId && (activeEditType === 'trim' || activeEditType === 'fade');
       if (!isBeingEdited) {
         const t = tracks.find(t=>t.id===clipPress.trackId);
@@ -1293,10 +1319,13 @@ window.addEventListener('pointermove', (e) => {
 });
 window.addEventListener('pointerup', () => {
   if (clipPress) {
-    clearTimeout(clipPress.timer);
-    if (!clipPress.moved && !clipPress.longPressFired) {
-      touchSelectedClipId = clipPress.clipId;
-      renderLanes();
+    if (!clipPress.moved) {
+      if (touchSelectedClipId === clipPress.clipId) {
+        showClipContextMenu(clipPress.trackId, clipPress.clipId, clipPress.startX, clipPress.startY);
+      } else {
+        touchSelectedClipId = clipPress.clipId;
+        renderLanes();
+      }
     }
     clipPress = null;
   }
