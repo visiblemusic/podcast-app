@@ -93,7 +93,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v7</span></h1>
+  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v7.1</span></h1>
   <p class="sub">multi-track recorder — arm a track, record, mix</p>
   <div class="notice" id="notice"></div>
 
@@ -314,33 +314,6 @@ let activePointers = new Map();
 let pinching = false;
 let pinchStartDist = 0, pinchStartPPS = 40, pinchMidScreenX = 0, pinchStartScrollLeft = 0;
 function pointerDist(p1, p2) { return Math.hypot(p2.x-p1.x, p2.y-p1.y); }
-timelineOuter.addEventListener('pointerdown', (e) => {
-  activePointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
-  if (activePointers.size === 2) {
-    pinching = true;
-    scrubbing = false; dragState = null; trimDragState = null;
-    const pts = Array.from(activePointers.values());
-    pinchStartDist = pointerDist(pts[0], pts[1]) || 1;
-    pinchStartPPS = PPS;
-    const rect = timelineOuter.getBoundingClientRect();
-    pinchMidScreenX = ((pts[0].x+pts[1].x)/2) - rect.left;
-    pinchStartScrollLeft = timelineOuter.scrollLeft;
-  }
-});
-window.addEventListener('pointermove', (e) => {
-  if (!activePointers.has(e.pointerId)) return;
-  activePointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
-  if (!pinching || activePointers.size !== 2) return;
-  const pts = Array.from(activePointers.values());
-  const dist = pointerDist(pts[0], pts[1]);
-  const ratio = dist / pinchStartDist;
-  const contentX = pinchStartScrollLeft + pinchMidScreenX;
-  const newPPS = Math.max(10, Math.min(200, pinchStartPPS * ratio));
-  PPS = newPPS;
-  relayoutClipsForZoom();
-  const newContentX = contentX * (newPPS/pinchStartPPS);
-  timelineOuter.scrollLeft = Math.max(0, newContentX - pinchMidScreenX);
-});
 function endPinchPointer(e) {
   activePointers.delete(e.pointerId);
   if (activePointers.size < 2) pinching = false;
@@ -605,6 +578,33 @@ const ruler = document.getElementById('ruler');
 const lanesContainer = document.getElementById('lanesContainer');
 const timelineInner = document.getElementById('timelineInner');
 const timelineOuter = document.getElementById('timelineOuter');
+timelineOuter.addEventListener('pointerdown', (e) => {
+  activePointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
+  if (activePointers.size === 2) {
+    pinching = true;
+    scrubbing = false; dragState = null; trimDragState = null;
+    const pts = Array.from(activePointers.values());
+    pinchStartDist = pointerDist(pts[0], pts[1]) || 1;
+    pinchStartPPS = PPS;
+    const rect = timelineOuter.getBoundingClientRect();
+    pinchMidScreenX = ((pts[0].x+pts[1].x)/2) - rect.left;
+    pinchStartScrollLeft = timelineOuter.scrollLeft;
+  }
+});
+window.addEventListener('pointermove', (e) => {
+  if (!activePointers.has(e.pointerId)) return;
+  activePointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
+  if (!pinching || activePointers.size !== 2) return;
+  const pts = Array.from(activePointers.values());
+  const dist = pointerDist(pts[0], pts[1]);
+  const ratio = dist / pinchStartDist;
+  const contentX = pinchStartScrollLeft + pinchMidScreenX;
+  const newPPS = Math.max(10, Math.min(200, pinchStartPPS * ratio));
+  PPS = newPPS;
+  relayoutClipsForZoom();
+  const newContentX = contentX * (newPPS/pinchStartPPS);
+  timelineOuter.scrollLeft = Math.max(0, newContentX - pinchMidScreenX);
+});
 const playheadEl = document.getElementById('playheadEl');
 
 function genId() { return 'x' + Date.now() + Math.random().toString(36).slice(2,8); }
