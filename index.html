@@ -81,11 +81,18 @@
   .playhead { position:absolute; top:0; bottom:0; width:14px; margin-left:-7px; z-index:6; touch-action:none; cursor:ew-resize; }
   .playhead .line { position:absolute; left:6px; top:0; bottom:0; width:2px; background:var(--amber); }
   .playhead .handle { position:absolute; left:1px; top:-2px; width:12px; height:8px; background:var(--amber); border-radius:2px; }
+  .asset-row, .picker-row { display:flex; align-items:center; gap:8px; padding:6px 4px; font-size:12px; border-bottom:1px solid var(--border); }
+  .asset-row:last-child, .picker-row:last-child { border-bottom:none; }
+  .asset-row .aname, .picker-row .aname { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .asset-row .asize, .picker-row .asize { font-size:10px; color:var(--dim); flex-shrink:0; }
+  .asset-row.unused .aname { color:#8a7a5a; }
+  .asset-row.unused .asize { color:#7a6a4a; }
+  .picker-row button { font-size:10px; padding:3px 8px; border-radius:5px; border:1px solid var(--border); background:var(--teal); color:var(--teal-light); cursor:pointer; flex-shrink:0; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v5.4</span></h1>
+  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v6</span></h1>
   <p class="sub">multi-track recorder — arm a track, record, mix</p>
   <div class="notice" id="notice"></div>
 
@@ -145,6 +152,28 @@
         <div id="lanesContainer"></div>
         <div class="playhead" id="playheadEl"><div class="line"></div><div class="handle"></div></div>
       </div>
+    </div>
+  </div>
+
+  <div style="display:flex; gap:14px; flex-wrap:wrap; margin-top:20px;">
+    <div style="flex:1; min-width:260px;">
+      <div class="section-row">
+        <span class="section-label">Project files</span>
+        <button id="purgeAssetsBtn" style="font-size:10px; padding:3px 8px; border-radius:6px; border:1px solid var(--red); background:transparent; color:var(--red);">Purge unused</button>
+      </div>
+      <div id="assetList" style="background:var(--panel); border:1px solid var(--border); border-radius:10px; max-height:220px; overflow-y:auto; padding:6px;"></div>
+    </div>
+
+    <div style="flex:1; min-width:260px;">
+      <div class="section-row">
+        <span class="section-label">Add from iPad files</span>
+        <button id="browseFilesBtn" style="font-size:10px; padding:3px 8px; border-radius:6px; border:1px solid var(--border); background:var(--panel); color:var(--amber);">Browse Files</button>
+      </div>
+      <input type="text" id="fileFilterInput" placeholder="filter selected files…" style="width:100%; background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:6px; font-size:12px; padding:6px 8px; margin-bottom:6px; display:none;">
+      <div id="pickerResults" style="background:var(--panel); border:1px solid var(--border); border-radius:10px; max-height:220px; overflow-y:auto; padding:6px;">
+        <div style="font-size:11px; color:#514c40; padding:6px;">Tap "Browse Files" to pick audio from your iPad.</div>
+      </div>
+      <input type="file" id="deviceFileInput" accept="audio/*" multiple style="display:none;">
     </div>
   </div>
 </div>
@@ -279,6 +308,44 @@ function setZoom(newPPS) {
 }
 zoomInBtn.addEventListener('click', () => setZoom(PPS * 1.4));
 zoomOutBtn.addEventListener('click', () => setZoom(PPS / 1.4));
+const assetList = document.getElementById('assetList');
+const purgeAssetsBtn = document.getElementById('purgeAssetsBtn');
+function usedAssetIdSet() {
+  const s = new Set();
+  tracks.forEach(t => t.clips.forEach(c => s.add(c.assetId)));
+  return s;
+}
+function renderAssetList() {
+  if (!assetList) return;
+  const used = usedAssetIdSet();
+  assetList.innerHTML = '';
+  if (projectAssets.length === 0) {
+    assetList.innerHTML = '<div style="font-size:11px; color:#514c40; padding:6px;">No recordings yet.</div>';
+    return;
+  }
+  projectAssets.forEach(a => {
+    const isUsed = used.has(a.id);
+    const row = document.createElement('div');
+    row.className = 'asset-row' + (isUsed ? '' : ' unused');
+    const name = document.createElement('span');
+    name.className = 'aname';
+    name.textContent = a.name + (isUsed ? '' : '  (unused)');
+    const size = document.createElement('span');
+    size.className = 'asize';
+    size.textContent = formatBytes(a.size);
+    row.appendChild(name); row.appendChild(size);
+    assetList.appendChild(row);
+  });
+}
+purgeAssetsBtn.addEventListener('click', () => {
+  const used = usedAssetIdSet();
+  const unusedCount = projectAssets.filter(a => !used.has(a.id)).length;
+  if (unusedCount === 0) { showNotice('No unused files to purge.'); return; }
+  if (!confirm('Delete ' + unusedCount + ' unused file(s) from storage? This cannot be undone.')) return;
+  projectAssets = projectAssets.filter(a => used.has(a.id));
+  saveProject();
+  renderAssetList();
+});
 const projectSelect = document.getElementById('projectSelect');
 const newProjectBtn = document.getElementById('newProjectBtn');
 const renameProjectBtn = document.getElementById('renameProjectBtn');
@@ -311,14 +378,17 @@ async function exportProject() {
   exportProjectBtn.disabled = true;
   exportProjectBtn.textContent = '⬇ Working…';
   try {
-    const exportTracks = await Promise.all(tracks.map(async t => ({
-      id:t.id, name:t.name, volume:t.volume, muted:t.muted, soloed:t.soloed, armed:t.armed,
-      clips: await Promise.all(t.clips.map(async c => ({
-        id:c.id, start:c.start, duration:c.duration, trimIn:c.trimIn, trimOut:c.trimOut,
-        dataUrl: await blobToDataUrl(c.blob)
-      })))
+    const usedAssetIds = new Set();
+    tracks.forEach(t => t.clips.forEach(c => usedAssetIds.add(c.assetId)));
+    const usedAssets = projectAssets.filter(a => usedAssetIds.has(a.id));
+    const exportAssets = await Promise.all(usedAssets.map(async a => ({
+      id:a.id, name:a.name, mimeType:a.blob.type, dataUrl: await blobToDataUrl(a.blob)
     })));
-    const exportObj = { formatVersion:1, projectName: p ? p.name : 'Project', playheadPos, tracks: exportTracks };
+    const exportTracks = tracks.map(t => ({
+      id:t.id, name:t.name, volume:t.volume, muted:t.muted, soloed:t.soloed, armed:t.armed,
+      clips: t.clips.map(c => ({ id:c.id, assetId:c.assetId, start:c.start, duration:c.duration, trimIn:c.trimIn, trimOut:c.trimOut }))
+    }));
+    const exportObj = { formatVersion:2, projectName: p ? p.name : 'Project', playheadPos, assets: exportAssets, tracks: exportTracks };
     const json = JSON.stringify(exportObj);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -348,23 +418,42 @@ async function importProjectFile(file) {
     const newId = genId();
     const name = (data.projectName || 'Imported Project') + ' (imported)';
     projectList.push({ id:newId, name });
-    tracks = []; selectedClipId=null; undoStack=[]; redoStack=[];
+    tracks = []; selectedClipId=null; undoStack=[]; redoStack=[]; projectAssets = [];
     activeProjectId = newId;
     const ctx = ensureAudioCtx();
+    const isOldFormat = !data.assets;
+    if (!isOldFormat) {
+      for (const sa of data.assets) {
+        const resp = await fetch(sa.dataUrl);
+        const blob = await resp.blob();
+        const arrBuf = await blob.arrayBuffer();
+        const buffer = await ctx.decodeAudioData(arrBuf.slice(0));
+        projectAssets.push({ id: sa.id, name: sa.name, blob, buffer, mimeType: sa.mimeType, size: blob.size });
+      }
+    }
     for (const st of data.tracks) {
       const gainNode = ctx.createGain(); gainNode.connect(ctx.destination);
       const track = { id: st.id || genId(), name: st.name || 'Track',
         volume: typeof st.volume==='number' ? st.volume : 1,
         muted: !!st.muted, soloed: !!st.soloed, armed: !!st.armed, gainNode, clips: [] };
       for (const sc of st.clips) {
-        const resp = await fetch(sc.dataUrl);
-        const blob = await resp.blob();
-        const arrBuf = await blob.arrayBuffer();
-        const buffer = await ctx.decodeAudioData(arrBuf.slice(0));
-        const trimIn = typeof sc.trimIn === 'number' ? sc.trimIn : 0;
-        const trimOut = typeof sc.trimOut === 'number' ? sc.trimOut : sc.duration;
-        const visible = sliceAudioBuffer(buffer, trimIn, trimOut);
-        track.clips.push({ id: sc.id || genId(), start: sc.start, duration: sc.duration, buffer, blob, trimIn, trimOut,
+        let assetId, trimIn, trimOut;
+        if (isOldFormat) {
+          const resp = await fetch(sc.dataUrl);
+          const blob = await resp.blob();
+          const arrBuf = await blob.arrayBuffer();
+          const buffer = await ctx.decodeAudioData(arrBuf.slice(0));
+          assetId = genId();
+          projectAssets.push({ id: assetId, name: 'Recording ' + (projectAssets.length+1), blob, buffer, mimeType: blob.type, size: blob.size });
+          trimIn = typeof sc.trimIn === 'number' ? sc.trimIn : 0;
+          trimOut = typeof sc.trimOut === 'number' ? sc.trimOut : sc.duration;
+        } else {
+          assetId = sc.assetId; trimIn = sc.trimIn; trimOut = sc.trimOut;
+        }
+        const asset = getAsset(assetId);
+        if (!asset) continue;
+        const visible = sliceAudioBuffer(asset.buffer, trimIn, trimOut);
+        track.clips.push({ id: sc.id || genId(), assetId, start: sc.start, duration: sc.duration, trimIn, trimOut,
           waveformUrl: makeWaveformUrl(visible, Math.max(sc.duration*PPS, 28), 78-16) });
       }
       tracks.push(track);
@@ -376,6 +465,7 @@ async function importProjectFile(file) {
     await flushSaveNow();
     renderAll();
     renderProjectSelector();
+    renderAssetList();
   } catch (e) {
     showNotice('Import failed: ' + e.message);
   } finally {
@@ -390,6 +480,87 @@ importFileInput.addEventListener('change', (e) => {
   if (file) importProjectFile(file);
   importFileInput.value = '';
 });
+
+const browseFilesBtn = document.getElementById('browseFilesBtn');
+const deviceFileInput = document.getElementById('deviceFileInput');
+const pickerResults = document.getElementById('pickerResults');
+const fileFilterInput = document.getElementById('fileFilterInput');
+let pickedFiles = [];
+let currentPickerAudio = null, currentPickerPlaying = null;
+
+browseFilesBtn.addEventListener('click', () => deviceFileInput.click());
+deviceFileInput.addEventListener('change', (e) => {
+  const files = Array.from(e.target.files || []);
+  if (files.length === 0) return;
+  pickedFiles = files.map(f => ({ file:f, name:f.name, size:f.size, url:URL.createObjectURL(f), playing:false }));
+  fileFilterInput.value = '';
+  fileFilterInput.style.display = 'block';
+  renderPickerResults();
+  deviceFileInput.value = '';
+});
+fileFilterInput.addEventListener('input', () => renderPickerResults());
+
+function renderPickerResults() {
+  const filterText = fileFilterInput.value.trim().toLowerCase();
+  pickerResults.innerHTML = '';
+  const filtered = pickedFiles.filter(pf => !filterText || pf.name.toLowerCase().includes(filterText));
+  if (filtered.length === 0) {
+    pickerResults.innerHTML = '<div style="font-size:11px; color:#514c40; padding:6px;">' +
+      (pickedFiles.length ? 'No matches.' : 'Tap "Browse Files" to pick audio from your iPad.') + '</div>';
+    return;
+  }
+  filtered.forEach(pf => {
+    const row = document.createElement('div');
+    row.className = 'picker-row';
+    const name = document.createElement('span'); name.className='aname'; name.textContent = pf.name;
+    const size = document.createElement('span'); size.className='asize'; size.textContent = formatBytes(pf.size);
+    const playBtn = document.createElement('button');
+    playBtn.textContent = pf.playing ? '⏸' : '▶';
+    playBtn.addEventListener('click', () => togglePickerPreview(pf));
+    const addBtn = document.createElement('button');
+    addBtn.textContent = 'Add';
+    addBtn.addEventListener('click', () => addPickedFileToTimeline(pf));
+    row.appendChild(name); row.appendChild(size); row.appendChild(playBtn); row.appendChild(addBtn);
+    pickerResults.appendChild(row);
+  });
+}
+function togglePickerPreview(pf) {
+  if (currentPickerPlaying === pf) {
+    currentPickerAudio.pause();
+    pf.playing = false; currentPickerPlaying = null;
+    renderPickerResults();
+    return;
+  }
+  if (currentPickerAudio) { currentPickerAudio.pause(); if (currentPickerPlaying) currentPickerPlaying.playing = false; }
+  currentPickerAudio = new Audio(pf.url);
+  currentPickerAudio.onended = () => { pf.playing = false; currentPickerPlaying = null; renderPickerResults(); };
+  currentPickerAudio.play();
+  pf.playing = true; currentPickerPlaying = pf;
+  renderPickerResults();
+}
+async function addPickedFileToTimeline(pf) {
+  const target = armedTrack();
+  if (!target) { showNotice('Add and arm a track first — that\'s where the file will land.'); return; }
+  try {
+    const ctx = ensureAudioCtx();
+    const arrBuf = await pf.file.arrayBuffer();
+    const buffer = await ctx.decodeAudioData(arrBuf);
+    const newStart = playheadPos, newEnd = newStart + buffer.duration;
+    pushUndoSnapshot();
+    const { toRemove, toAdd } = resolveOverlaps(target.clips, newStart, newEnd, null);
+    target.clips = target.clips.filter(c => !toRemove.includes(c.id));
+    target.clips.push(...toAdd);
+    const assetId = genId();
+    projectAssets.push({ id:assetId, name:pf.name, blob:pf.file, buffer, mimeType: pf.file.type || 'audio/mpeg', size: pf.file.size });
+    target.clips.push({ id:genId(), assetId, start:newStart, duration:buffer.duration, trimIn:0, trimOut:buffer.duration,
+      waveformUrl: makeWaveformUrl(buffer, Math.max(buffer.duration*PPS, 28), 78-16) });
+    playheadPos = newEnd;
+    saveProject();
+    renderAll();
+  } catch (e) {
+    showNotice('Could not add that file: ' + e.message);
+  }
+}
 const headersList = document.getElementById('headersList');
 const ruler = document.getElementById('ruler');
 const lanesContainer = document.getElementById('lanesContainer');
@@ -398,6 +569,13 @@ const timelineOuter = document.getElementById('timelineOuter');
 const playheadEl = document.getElementById('playheadEl');
 
 function genId() { return 'x' + Date.now() + Math.random().toString(36).slice(2,8); }
+let projectAssets = [];
+function getAsset(id) { return projectAssets.find(a=>a.id===id); }
+function formatBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
+  return (n/(1024*1024)).toFixed(2) + ' MB';
+}
 function fmt(sec) {
   sec = Math.max(0, sec);
   const m = Math.floor(sec/60), s = Math.floor(sec%60), ms = Math.floor((sec%1)*10);
@@ -518,11 +696,13 @@ function sliceAudioBuffer(buffer, startSec, endSec) {
 function makeTrimmedClip(original, sliceStartSec, sliceEndSec, newAbsStart) {
   const dur = sliceEndSec - sliceStartSec;
   if (dur < MIN_CLIP_DUR) return null;
-  const bufStart = (original.trimIn||0) + sliceStartSec;
-  const bufEnd = (original.trimIn||0) + sliceEndSec;
-  const buffer = sliceAudioBuffer(original.buffer, bufStart, bufEnd);
-  return { id: genId(), start:newAbsStart, duration:dur, buffer, trimIn:0, trimOut:dur,
-    blob: audioBufferToWavBlob(buffer), waveformUrl: makeWaveformUrl(buffer, Math.max(dur*PPS, 28), 78-16) };
+  const asset = getAsset(original.assetId);
+  if (!asset) return null;
+  const newTrimIn = original.trimIn + sliceStartSec;
+  const newTrimOut = original.trimIn + sliceEndSec;
+  const visible = sliceAudioBuffer(asset.buffer, newTrimIn, newTrimOut);
+  return { id: genId(), assetId: original.assetId, start:newAbsStart, duration:dur, trimIn:newTrimIn, trimOut:newTrimOut,
+    waveformUrl: makeWaveformUrl(visible, Math.max(dur*PPS, 28), 78-16) };
 }
 function resolveOverlaps(trackClips, newStart, newEnd, excludeId) {
   const toRemove=[], toAdd=[];
@@ -629,12 +809,15 @@ async function startRecording() {
       const { toRemove, toAdd } = resolveOverlaps(trk.clips, newStart, newEnd, null);
       trk.clips = trk.clips.filter(c => !toRemove.includes(c.id));
       trk.clips.push(...toAdd);
-      trk.clips.push({ id:genId(), start:newStart, duration:decoded.duration, buffer:decoded, blob:rawBlob,
+      const assetId = genId();
+      projectAssets.push({ id: assetId, name: 'Recording ' + (projectAssets.length+1), blob: rawBlob, buffer: decoded, mimeType: rawBlob.type, size: rawBlob.size });
+      trk.clips.push({ id:genId(), assetId, start:newStart, duration:decoded.duration,
         trimIn:0, trimOut:decoded.duration,
         waveformUrl: makeWaveformUrl(decoded, Math.max(decoded.duration*PPS, 28), 78-16) });
       playheadPos = newEnd;
       saveProject();
       renderAll();
+      renderAssetList();
     } catch (e) { showNotice('Could not process the recording: '+e.message); }
   };
   localRecorder.onerror = () => { if (!handledStop) { handledStop = true; resetRecordingUI(); showNotice('Recording stopped unexpectedly. Please try again.'); } };
@@ -678,8 +861,10 @@ function play() {
     for (const c of t.clips) {
       const clipEnd = c.start+c.duration;
       if (clipEnd <= playheadPos) continue;
+      const asset = getAsset(c.assetId);
+      if (!asset) continue;
       const src = ctx.createBufferSource();
-      src.buffer = c.buffer;
+      src.buffer = asset.buffer;
       src.connect(t.gainNode);
       if (c.start >= playheadPos) src.start(playStartCtxTime + (c.start-playheadPos), c.trimIn, c.duration);
       else {
@@ -764,6 +949,8 @@ window.addEventListener('pointermove', (e) => {
   const t = tracks.find(t=>t.id===trimDragState.trackId);
   const clip = t && t.clips.find(c=>c.id===trimDragState.id);
   if (!clip) return;
+  const asset = getAsset(clip.assetId);
+  if (!asset) return;
   if (trimDragState.edge === 'left') {
     let newTrimIn = trimDragState.origTrimIn + deltaSec;
     newTrimIn = Math.max(0, Math.min(newTrimIn, trimDragState.origTrimOut - MIN_CLIP_DUR));
@@ -772,11 +959,11 @@ window.addEventListener('pointermove', (e) => {
     clip.duration = clip.trimOut - clip.trimIn;
   } else {
     let newTrimOut = trimDragState.origTrimOut + deltaSec;
-    newTrimOut = Math.min(clip.buffer.duration, Math.max(newTrimOut, trimDragState.origTrimIn + MIN_CLIP_DUR));
+    newTrimOut = Math.min(asset.buffer.duration, Math.max(newTrimOut, trimDragState.origTrimIn + MIN_CLIP_DUR));
     clip.trimOut = newTrimOut;
     clip.duration = clip.trimOut - clip.trimIn;
   }
-  const visibleNow = sliceAudioBuffer(clip.buffer, clip.trimIn, clip.trimOut);
+  const visibleNow = sliceAudioBuffer(asset.buffer, clip.trimIn, clip.trimOut);
   clip.waveformUrl = makeWaveformUrl(visibleNow, Math.max(clip.duration*PPS, 28), 78-16);
   renderLanes();
 });
@@ -786,8 +973,11 @@ window.addEventListener('pointerup', () => {
   const clip = t && t.clips.find(c=>c.id===trimDragState.id);
   trimDragState = null;
   if (!clip || !t) return;
-  const visible = sliceAudioBuffer(clip.buffer, clip.trimIn, clip.trimOut);
-  clip.waveformUrl = makeWaveformUrl(visible, Math.max(clip.duration*PPS, 28), 78-16);
+  const asset = getAsset(clip.assetId);
+  if (asset) {
+    const visible = sliceAudioBuffer(asset.buffer, clip.trimIn, clip.trimOut);
+    clip.waveformUrl = makeWaveformUrl(visible, Math.max(clip.duration*PPS, 28), 78-16);
+  }
   const newStart = clip.start, newEnd = newStart + clip.duration;
   const { toRemove, toAdd } = resolveOverlaps(t.clips, newStart, newEnd, clip.id);
   t.clips = t.clips.filter(c => !toRemove.includes(c.id));
@@ -956,7 +1146,7 @@ function renderHeaders() {
     headersList.appendChild(h);
   });
 }
-function renderAll() { renderHeaders(); renderLanes(); }
+function renderAll() { renderHeaders(); renderLanes(); renderAssetList(); }
 addTrackBtn.addEventListener('click', () => addTrack());
 
 /* ---------- Persistence (multi-project) ---------- */
@@ -1000,14 +1190,14 @@ async function doSaveNow() {
   if (!window.indexedDB || !activeProjectId) return;
   try {
     const db = await openDB();
-    const serialTracks = await Promise.all(tracks.map(async t => ({
-      id:t.id, name:t.name, volume:t.volume, muted:t.muted, soloed:t.soloed, armed:t.armed,
-      clips: await Promise.all(t.clips.map(async c => ({
-        id:c.id, start:c.start, duration:c.duration, trimIn:c.trimIn, trimOut:c.trimOut,
-        mimeType:c.blob.type, data: await c.blob.arrayBuffer()
-      })))
+    const serialAssets = await Promise.all(projectAssets.map(async a => ({
+      id:a.id, name:a.name, mimeType:a.blob.type, data: await a.blob.arrayBuffer()
     })));
-    await putKey(db, 'proj:'+activeProjectId, { tracks: serialTracks, playheadPos });
+    const serialTracks = tracks.map(t => ({
+      id:t.id, name:t.name, volume:t.volume, muted:t.muted, soloed:t.soloed, armed:t.armed,
+      clips: t.clips.map(c => ({ id:c.id, assetId:c.assetId, start:c.start, duration:c.duration, trimIn:c.trimIn, trimOut:c.trimOut }))
+    }));
+    await putKey(db, 'proj:'+activeProjectId, { assets: serialAssets, tracks: serialTracks, playheadPos });
     savedTag.style.opacity='1';
     setTimeout(()=> savedTag.style.opacity='0', 1200);
   } catch (e) { console.error('save failed', e); }
@@ -1025,16 +1215,36 @@ function teardownCurrentTracks() {
 }
 async function applyProjectRecord(record) {
   const ctx = ensureAudioCtx();
+  projectAssets = [];
+  const isOldFormat = !record.assets;
+  if (!isOldFormat) {
+    for (const sa of record.assets) {
+      const blob = new Blob([sa.data], { type: sa.mimeType });
+      const buffer = await ctx.decodeAudioData(sa.data.slice(0));
+      projectAssets.push({ id: sa.id, name: sa.name, blob, buffer, mimeType: sa.mimeType, size: sa.data.byteLength });
+    }
+  }
   for (const st of (record.tracks||[])) {
     const gainNode = ctx.createGain(); gainNode.connect(ctx.destination);
     const track = { id:st.id, name:st.name, volume:st.volume, muted:st.muted, soloed:st.soloed, armed:st.armed, gainNode, clips:[] };
     for (const sc of st.clips) {
-      const blob = new Blob([sc.data], { type: sc.mimeType });
-      const buffer = await ctx.decodeAudioData(sc.data.slice(0));
-      const trimIn = typeof sc.trimIn === 'number' ? sc.trimIn : 0;
-      const trimOut = typeof sc.trimOut === 'number' ? sc.trimOut : sc.duration;
-      const visible = sliceAudioBuffer(buffer, trimIn, trimOut);
-      track.clips.push({ id:sc.id, start:sc.start, duration:sc.duration, buffer, blob, trimIn, trimOut,
+      let assetId, trimIn, trimOut;
+      if (isOldFormat) {
+        // migrate: each old clip embedded its own full audio blob directly
+        const blob = new Blob([sc.data], { type: sc.mimeType });
+        const buffer = await ctx.decodeAudioData(sc.data.slice(0));
+        assetId = genId();
+        projectAssets.push({ id: assetId, name: 'Recording ' + (projectAssets.length+1), blob, buffer, mimeType: sc.mimeType, size: sc.data.byteLength });
+        trimIn = typeof sc.trimIn === 'number' ? sc.trimIn : 0;
+        trimOut = typeof sc.trimOut === 'number' ? sc.trimOut : sc.duration;
+      } else {
+        assetId = sc.assetId;
+        trimIn = sc.trimIn; trimOut = sc.trimOut;
+      }
+      const asset = getAsset(assetId);
+      if (!asset) continue;
+      const visible = sliceAudioBuffer(asset.buffer, trimIn, trimOut);
+      track.clips.push({ id:sc.id, assetId, start:sc.start, duration:sc.duration, trimIn, trimOut,
         waveformUrl: makeWaveformUrl(visible, Math.max(sc.duration*PPS, 28), 78-16) });
     }
     tracks.push(track);
@@ -1043,6 +1253,7 @@ async function applyProjectRecord(record) {
   if (!tracks.some(t=>t.armed) && tracks.length) tracks[0].armed = true;
   applyTrackGains();
   renderAll();
+  renderAssetList();
 }
 async function saveMetaNow() {
   if (!window.indexedDB) return;
@@ -1073,11 +1284,12 @@ async function createProject() {
   const id = genId();
   const name = 'Project ' + (projectList.length+1);
   projectList.push({id, name});
-  tracks = []; selectedClipId=null; undoStack=[]; redoStack=[]; playheadPos=0;
+  tracks = []; selectedClipId=null; undoStack=[]; redoStack=[]; playheadPos=0; projectAssets = [];
   activeProjectId = id;
   addTrack();
   await saveMetaNow();
   renderProjectSelector();
+  renderAssetList();
 }
 async function renameProject(id, newName) {
   const p = projectList.find(p=>p.id===id);
