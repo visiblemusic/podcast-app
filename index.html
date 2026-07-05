@@ -85,7 +85,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v5.2</span></h1>
+  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v5.3</span></h1>
   <p class="sub">multi-track recorder — arm a track, record, mix</p>
   <div class="notice" id="notice"></div>
 
@@ -104,8 +104,8 @@
       <div style="display:flex; align-items:center; gap:6px; margin-top:6px;">
         <button id="monitorBtn" style="font-size:9px; color:var(--amber); background:transparent; border:1px solid var(--border); border-radius:4px; padding:2px 6px; cursor:pointer;">🎙 enable monitor</button>
         <span style="font-size:9px; color:var(--dim); text-transform:uppercase;">Gain</span>
-        <input type="range" id="gainSlider" min="1" max="3" step="0.1" value="3" style="flex:1; height:14px;">
-        <span id="gainReadout" style="font-size:9px; color:var(--dim); width:28px;">3.0x</span>
+        <input type="range" id="gainSlider" min="1" max="6" step="0.1" value="6" style="flex:1; height:14px;">
+        <span id="gainReadout" style="font-size:9px; color:var(--dim); width:28px;">6.0x</span>
       </div>
     </div>
     <div id="savedTag">saved</div>
@@ -124,6 +124,7 @@
   <div class="section-row">
     <span class="section-label">Tracks</span>
     <div style="display:flex; gap:6px;">
+      <button id="followBtn" style="font-size:10px; padding:3px 9px; border-radius:6px; border:1px solid var(--amber); background:var(--amber); color:#1c1a17; text-transform:uppercase; letter-spacing:.03em;">Follow</button>
       <button id="zoomOutBtn" style="font-size:13px; padding:3px 10px; border-radius:6px; border:1px solid var(--border); background:var(--panel); color:var(--text);">−</button>
       <button id="zoomInBtn" style="font-size:13px; padding:3px 10px; border-radius:6px; border:1px solid var(--border); background:var(--panel); color:var(--text);">+</button>
       <button id="addTrackBtn">+ Add track</button>
@@ -244,6 +245,14 @@ gainSlider.addEventListener('input', (e) => {
 });
 const notice = document.getElementById('notice');
 const addTrackBtn = document.getElementById('addTrackBtn');
+const followBtn = document.getElementById('followBtn');
+let followPlayhead = true;
+function updateFollowBtn() {
+  followBtn.style.background = followPlayhead ? 'var(--amber)' : 'var(--panel)';
+  followBtn.style.color = followPlayhead ? '#1c1a17' : 'var(--text)';
+  followBtn.style.borderColor = followPlayhead ? 'var(--amber)' : 'var(--border)';
+}
+followBtn.addEventListener('click', () => { followPlayhead = !followPlayhead; updateFollowBtn(); });
 const zoomInBtn = document.getElementById('zoomInBtn');
 const zoomOutBtn = document.getElementById('zoomOutBtn');
 function setZoom(newPPS) {
@@ -251,7 +260,18 @@ function setZoom(newPPS) {
   if (newPPS === PPS) return;
   const playheadScreenX = playheadPos*PPS - timelineOuter.scrollLeft;
   PPS = newPPS;
-  renderLanes();
+  renderRuler();
+  tracks.forEach(t => {
+    t.clips.forEach(c => {
+      const el = clipBlockEls.get(c.id);
+      if (el) {
+        el.style.left = (c.start*PPS)+'px';
+        el.style.width = Math.max(c.duration*PPS, 28)+'px';
+      }
+    });
+  });
+  if (liveBlockEl) liveBlockEl.style.left = (takeStartPos*PPS)+'px';
+  renderPlayheadPosition();
   timelineOuter.scrollLeft = Math.max(0, playheadPos*PPS - playheadScreenX);
 }
 zoomInBtn.addEventListener('click', () => setZoom(PPS * 1.4));
@@ -430,7 +450,7 @@ function resolveOverlaps(trackClips, newStart, newEnd, excludeId) {
 
 /* ---------- Recording ---------- */
 let micStream = null;
-let inputGainValue = 3;
+let inputGainValue = 6;
 let activeBoostGain = null;
 let micGraphReady = false;
 let meterRunning = false;
@@ -581,6 +601,10 @@ function updatePlaybackFrame() {
   if (elapsedSincePlay >= 0) playheadPos = playStartPlayhead + elapsedSincePlay;
   const totalEnd = tracks.reduce((m,t)=>Math.max(m, ...t.clips.map(c=>c.start+c.duration), m), 0);
   renderPlayheadPosition();
+  if (followPlayhead) {
+    const target = Math.max(0, playheadPos*PPS - timelineOuter.clientWidth/2);
+    timelineOuter.scrollLeft = target;
+  }
   if (playing && totalEnd>0 && playheadPos>=totalEnd) { stopPlayback(totalEnd); return; }
   if (playing) playRAF = requestAnimationFrame(updatePlaybackFrame);
 }
@@ -613,6 +637,7 @@ function deselectClip(e) {
   if (selectedClipId) { selectedClipId = null; renderLanes(); }
 }
 ruler.addEventListener('pointerdown', (e) => { deselectClip(); onScrubStart(e); });
+playheadEl.addEventListener('pointerdown', (e) => { e.stopPropagation(); onScrubStart(e); });
 window.addEventListener('pointermove', onScrubMove);
 window.addEventListener('pointerup', onScrubEnd);
 
@@ -700,6 +725,7 @@ window.addEventListener('pointerup', () => {
 
 /* ---------- Rendering ---------- */
 let liveBlockEl = null;
+let clipBlockEls = new Map();
 let lastRenderedTickCount = -1;
 function renderPlayheadPosition() { playheadEl.style.left = (playheadPos*PPS)+'px'; }
 
@@ -731,6 +757,7 @@ function renderLanes() {
   renderRuler();
   lanesContainer.innerHTML = '';
   liveBlockEl = null;
+  clipBlockEls.clear();
   tracks.forEach(t => {
     const lane = document.createElement('div');
     lane.className = 'track-lane';
@@ -758,6 +785,7 @@ function renderLanes() {
       numLabel.textContent = idx+1;
       block.appendChild(numLabel);
       block.addEventListener('pointerdown', (e) => startClipDrag(e, t.id, c));
+      clipBlockEls.set(c.id, block);
       if (isSelected) {
         const leftHandle = document.createElement('div');
         leftHandle.className = 'trim-handle left';
