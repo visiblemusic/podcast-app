@@ -78,7 +78,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v3.4</span></h1>
+  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v3.5</span></h1>
   <p class="sub">multi-track recorder — arm a track, record, mix</p>
   <div class="notice" id="notice"></div>
 
@@ -89,6 +89,11 @@
       <div id="timer">00:00.0</div>
       <div class="meter-track"><div id="meterFill"></div></div>
       <div id="status">ready</div>
+      <div style="display:flex; align-items:center; gap:6px; margin-top:6px;">
+        <span style="font-size:9px; color:var(--dim); text-transform:uppercase;">Input gain</span>
+        <input type="range" id="gainSlider" min="1" max="8" step="0.1" value="3" style="flex:1; height:14px;">
+        <span id="gainReadout" style="font-size:9px; color:var(--dim); width:28px;">3.0x</span>
+      </div>
     </div>
     <div id="savedTag">saved</div>
   </div>
@@ -136,6 +141,13 @@ const timerEl = document.getElementById('timer');
 const meterFill = document.getElementById('meterFill');
 const statusEl = document.getElementById('status');
 const savedTag = document.getElementById('savedTag');
+const gainSlider = document.getElementById('gainSlider');
+const gainReadout = document.getElementById('gainReadout');
+gainSlider.addEventListener('input', (e) => {
+  inputGainValue = parseFloat(e.target.value);
+  gainReadout.textContent = inputGainValue.toFixed(1) + 'x';
+  if (activeBoostGain) activeBoostGain.gain.value = inputGainValue;
+});
 const notice = document.getElementById('notice');
 const addTrackBtn = document.getElementById('addTrackBtn');
 const headersList = document.getElementById('headersList');
@@ -260,6 +272,8 @@ function resolveOverlaps(trackClips, newStart, newEnd, excludeId) {
 
 /* ---------- Recording ---------- */
 let micStream = null;
+let inputGainValue = 3;
+let activeBoostGain = null;
 function tickLevel() {
   if (!analyser) return;
   const data = new Uint8Array(analyser.frequencyBinCount);
@@ -270,6 +284,7 @@ function tickLevel() {
 }
 function resetRecordingUI() {
   isRecording = false;
+  activeBoostGain = null;
   recordBtn.classList.remove('recording'); recordBtn.textContent = '●';
   playBtn.disabled = false;
   statusEl.textContent = 'ready';
@@ -304,18 +319,24 @@ async function startRecording() {
   const ctx = ensureAudioCtx();
   if (ctx.state==='suspended') await ctx.resume();
   const source = ctx.createMediaStreamSource(localStream);
+  const boostGain = ctx.createGain();
+  boostGain.gain.value = inputGainValue;
+  source.connect(boostGain);
   const localAnalyser = ctx.createAnalyser(); localAnalyser.fftSize=512;
-  source.connect(localAnalyser);
+  boostGain.connect(localAnalyser);
   analyser = localAnalyser;
   tickLevel();
+  const destNode = ctx.createMediaStreamDestination();
+  boostGain.connect(destNode);
 
   let mimeType='';
   if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType='audio/mp4';
   else if (MediaRecorder.isTypeSupported('audio/webm')) mimeType='audio/webm';
-  const localRecorder = mimeType ? new MediaRecorder(localStream,{mimeType}) : new MediaRecorder(localStream);
+  const localRecorder = mimeType ? new MediaRecorder(destNode.stream,{mimeType}) : new MediaRecorder(destNode.stream);
   const localChunks = [];
   mediaRecorder = localRecorder;
   stream = localStream;
+  activeBoostGain = boostGain;
   takeStartPos = playheadPos;
   let handledStop = false;
 
