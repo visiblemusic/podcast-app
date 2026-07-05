@@ -13,15 +13,15 @@
   * { box-sizing:border-box; -webkit-user-select:none; user-select:none; }
   html,body { margin:0; padding:0; background:var(--bg); color:var(--text);
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; -webkit-tap-highlight-color:transparent; }
-  .wrap { max-width:900px; margin:0 auto; padding:20px 14px 48px; }
+  .wrap { max-width:900px; margin:0 auto; padding:0 14px 48px; }
   h1 { font-size:15px; letter-spacing:.15em; text-transform:uppercase; color:var(--amber); margin:0 0 4px; }
   .sub { font-size:12px; color:var(--dim); margin:0 0 18px; }
   .notice { display:none; gap:8px; align-items:flex-start; background:rgba(192,57,43,.12);
     border:1px solid var(--red); color:#f0c9c0; font-size:13px; padding:10px 12px; border-radius:8px; margin-bottom:16px; }
   .notice.show { display:flex; }
+  .sticky-header-block { position:sticky; top:0; z-index:30; background:var(--bg); padding-top:20px; }
   .transport { display:flex; align-items:center; gap:12px; background:var(--panel);
-    border:1px solid var(--border); border-radius:12px; padding:9px 14px; margin-bottom:16px;
-    position:sticky; top:0; z-index:30; }
+    border:1px solid var(--border); border-radius:12px; padding:9px 14px; margin-bottom:16px; }
   .tbtn { width:50px; height:50px; border-radius:50%; border:none; flex-shrink:0; cursor:pointer;
     display:flex; align-items:center; justify-content:center; font-size:18px; }
   #recordBtn { background:var(--red); color:var(--text); }
@@ -39,9 +39,11 @@
   #addTrackBtn { background:var(--panel); border:1px solid var(--border); color:var(--amber);
     font-size:11px; padding:4px 10px; border-radius:6px; cursor:pointer; text-transform:uppercase; letter-spacing:.05em; }
 
-  .mixer { display:flex; border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+  .mixer-ruler-row { display:flex; border:1px solid var(--border); border-bottom:none; border-radius:12px 12px 0 0; overflow:hidden; background:var(--panel); }
+  .headers-col-spacer { width:140px; flex-shrink:0; border-right:1px solid var(--border); }
+  #rulerOuter { flex:1; overflow:hidden; position:relative; }
+  .mixer { display:flex; border:1px solid var(--border); border-top:none; border-radius:0 0 12px 12px; overflow:hidden; }
   .headers-col { width:140px; flex-shrink:0; background:var(--panel); border-right:1px solid var(--border); }
-  .ruler-spacer { height:26px; border-bottom:1px solid var(--border); }
   .track-header { height:var(--row-h); border-bottom:1px solid var(--border); padding:8px 8px;
     display:flex; flex-direction:column; justify-content:flex-start; gap:8px; }
   .track-header:last-child { border-bottom:none; }
@@ -68,7 +70,7 @@
     border:1px solid #3d5b58; color:var(--teal-light); display:flex; align-items:center; gap:4px;
     padding:0 6px; cursor:grab; font-size:10px; white-space:nowrap; touch-action:none; }
   .clip-block.dragging { opacity:.85; z-index:5; box-shadow:0 2px 8px rgba(0,0,0,.5); }
-  .clip-block.selected { border:2px solid #f4d03f; box-shadow:0 0 0 2px rgba(244,208,63,0.35); z-index:4; }
+  .clip-block.fade-active { border:2px solid #f4d03f; box-shadow:0 0 0 2px rgba(244,208,63,0.35); z-index:4; }
   .trim-handle { position:absolute; top:0; bottom:0; width:24px; cursor:ew-resize;
     background:rgba(244,208,63,0.55); touch-action:none; z-index:6; }
   .trim-handle.left { left:0; border-radius:6px 0 0 6px; }
@@ -91,62 +93,67 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v8</span></h1>
-  <div class="notice" id="notice"></div>
+  <div class="sticky-header-block">
+    <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v9</span></h1>
+    <div class="notice" id="notice"></div>
 
-  <div class="transport" style="flex-wrap:wrap;">
-    <button id="toStartBtn" class="tbtn" style="font-size:16px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back to start">|◀</button>
-    <button id="skipBackBtn" class="tbtn" style="font-size:12px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back 10 seconds">-10s</button>
-    <button id="recordBtn" class="tbtn" aria-label="Record">●</button>
-    <button id="playBtn" class="tbtn" aria-label="Play">▶</button>
-    <button id="skipFwdBtn" class="tbtn" style="font-size:12px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Forward 10 seconds">+10s</button>
-    <button id="undoBtn" class="tbtn" style="background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Undo" disabled><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg></button>
-    <button id="redoBtn" class="tbtn" style="background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Redo" disabled><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z"/></svg></button>
-    <div class="transport-info">
-      <div id="timer">00:00.0</div>
-      <div class="meter-track"><div id="meterFill"></div></div>
-      <div id="status">ready</div>
-      <div style="display:flex; align-items:center; gap:6px; margin-top:6px;">
-        <button id="monitorBtn" style="font-size:9px; color:var(--amber); background:transparent; border:1px solid var(--border); border-radius:4px; padding:2px 6px; cursor:pointer;">🎙 enable monitor</button>
-        <span style="font-size:9px; color:var(--dim); text-transform:uppercase;">Gain</span>
-        <input type="range" id="gainSlider" min="1" max="6" step="0.1" value="6" style="flex:1; height:14px;">
-        <span id="gainReadout" style="font-size:9px; color:var(--dim); width:28px;">6.0x</span>
+    <div class="transport" style="flex-wrap:wrap;">
+      <button id="toStartBtn" class="tbtn" style="font-size:16px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back to start">|◀</button>
+      <button id="skipBackBtn" class="tbtn" style="font-size:12px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back 10 seconds">-10s</button>
+      <button id="recordBtn" class="tbtn" aria-label="Record">●</button>
+      <button id="playBtn" class="tbtn" aria-label="Play">▶</button>
+      <button id="skipFwdBtn" class="tbtn" style="font-size:12px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Forward 10 seconds">+10s</button>
+      <button id="undoBtn" class="tbtn" style="background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Undo" disabled><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg></button>
+      <button id="redoBtn" class="tbtn" style="background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Redo" disabled><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z"/></svg></button>
+      <div class="transport-info">
+        <div id="timer">00:00.0</div>
+        <div class="meter-track"><div id="meterFill"></div></div>
+        <div id="status">ready</div>
+        <div style="display:flex; align-items:center; gap:6px; margin-top:6px;">
+          <button id="monitorBtn" style="font-size:9px; color:var(--amber); background:transparent; border:1px solid var(--border); border-radius:4px; padding:2px 6px; cursor:pointer;">🎙 enable monitor</button>
+          <span style="font-size:9px; color:var(--dim); text-transform:uppercase;">Gain</span>
+          <input type="range" id="gainSlider" min="1" max="6" step="0.1" value="6" style="flex:1; height:14px;">
+          <span id="gainReadout" style="font-size:9px; color:var(--dim); width:28px;">6.0x</span>
+        </div>
+      </div>
+      <div id="savedTag">saved</div>
+    </div>
+
+    <div class="section-row">
+      <span class="section-label">Project</span>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <select id="projectSelect" style="background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:8px; font-size:14px; padding:8px 10px; max-width:140px;"></select>
+        <button id="newProjectBtn" style="font-size:14px; padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--amber);">+ New</button>
+        <button id="renameProjectBtn" style="font-size:14px; padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text);">Rename</button>
+        <button id="deleteProjectBtn" style="font-size:14px; padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--red);">Delete</button>
+        <button id="exportProjectBtn" style="font-size:14px; padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--teal-light);">⬇ Export</button>
+        <button id="importProjectBtn" style="font-size:14px; padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--teal-light);">⬆ Import</button>
+        <input type="file" id="importFileInput" accept="application/json,.json" style="display:none;">
       </div>
     </div>
-    <div id="savedTag">saved</div>
-  </div>
 
-  <div class="section-row">
-    <span class="section-label">Project</span>
-    <div style="display:flex; gap:8px; flex-wrap:wrap;">
-      <select id="projectSelect" style="background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:8px; font-size:14px; padding:8px 10px; max-width:140px;"></select>
-      <button id="newProjectBtn" style="font-size:14px; padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--amber);">+ New</button>
-      <button id="renameProjectBtn" style="font-size:14px; padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text);">Rename</button>
-      <button id="deleteProjectBtn" style="font-size:14px; padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--red);">Delete</button>
-      <button id="exportProjectBtn" style="font-size:14px; padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--teal-light);">⬇ Export</button>
-      <button id="importProjectBtn" style="font-size:14px; padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--teal-light);">⬆ Import</button>
-      <input type="file" id="importFileInput" accept="application/json,.json" style="display:none;">
+    <div class="section-row">
+      <span class="section-label">Tracks</span>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button id="followBtn" style="font-size:13px; padding:8px 14px; border-radius:8px; border:1px solid var(--amber); background:var(--amber); color:#1c1a17; text-transform:uppercase; letter-spacing:.03em;">Follow</button>
+        <button id="zoomOutBtn" style="font-size:16px; padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text);">−</button>
+        <button id="zoomInBtn" style="font-size:16px; padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text);">+</button>
+        <button id="addTrackBtn" style="font-size:14px; padding:8px 14px;">+ Add track</button>
+      </div>
     </div>
-  </div>
 
-  <div class="section-row">
-    <span class="section-label">Tracks</span>
-    <div style="display:flex; gap:8px; flex-wrap:wrap;">
-      <button id="followBtn" style="font-size:13px; padding:8px 14px; border-radius:8px; border:1px solid var(--amber); background:var(--amber); color:#1c1a17; text-transform:uppercase; letter-spacing:.03em;">Follow</button>
-      <button id="zoomOutBtn" style="font-size:16px; padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text);">−</button>
-      <button id="zoomInBtn" style="font-size:16px; padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text);">+</button>
-      <button id="addTrackBtn" style="font-size:14px; padding:8px 14px;">+ Add track</button>
+    <div class="mixer-ruler-row">
+      <div class="headers-col-spacer"></div>
+      <div id="rulerOuter"><div id="ruler"></div></div>
     </div>
   </div>
 
   <div class="mixer">
     <div class="headers-col">
-      <div class="ruler-spacer"></div>
       <div id="headersList"></div>
     </div>
     <div id="timelineOuter">
       <div id="timelineInner">
-        <div id="ruler"></div>
         <div id="lanesContainer"></div>
         <div class="playhead" id="playheadEl"><div class="line"></div><div class="handle"></div></div>
       </div>
@@ -184,16 +191,13 @@ let tracks = []; // {id, name, volume, muted, soloed, armed, gainNode, clips:[{i
 let playheadPos = 0;
 let playing = false, activeSources = [], playRAF = null, playStartCtxTime = 0, playStartPlayhead = 0;
 let dragState = null;
-let selectedClipId = null;
-let selectionMode = 'move'; // 'move' | 'trim' | 'fade' — only meaningful while selectedClipId is set
-let tapState = null; // {clipId, count, lastTime}
+let fadeModeClipId = null; // clip currently showing draggable fade handles
 let clipPress = null; // long-press/tap tracking on a clip body
 let emptyPress = null; // long-press/tap tracking on empty lane space
 let trimDragState = null;
 let fadeDragState = null;
 let clipboard = null; // {assetId, trimIn, trimOut, duration}
 let contextMenuEl = null, contextMenuOverlay = null;
-const DOUBLE_TAP_MS = 400;
 const LONG_PRESS_MS = 550;
 const MOVE_THRESHOLD = 6;
 let undoStack = [];
@@ -224,7 +228,7 @@ function applySnapshot(snap) {
     };
   });
   applyTrackGains();
-  if (selectedClipId && !tracks.some(t => t.clips.some(c => c.id === selectedClipId))) selectedClipId = null;
+  if (fadeModeClipId && !tracks.some(t => t.clips.some(c => c.id === fadeModeClipId))) fadeModeClipId = null;
 }
 function undo() {
   if (!undoStack.length) return;
@@ -437,7 +441,7 @@ async function importProjectFile(file) {
     const newId = genId();
     const name = (data.projectName || 'Imported Project') + ' (imported)';
     projectList.push({ id:newId, name });
-    tracks = []; selectedClipId=null; undoStack=[]; redoStack=[]; projectAssets = [];
+    tracks = []; fadeModeClipId=null; undoStack=[]; redoStack=[]; projectAssets = [];
     activeProjectId = newId;
     const ctx = ensureAudioCtx();
     const isOldFormat = !data.assets;
@@ -587,6 +591,9 @@ const ruler = document.getElementById('ruler');
 const lanesContainer = document.getElementById('lanesContainer');
 const timelineInner = document.getElementById('timelineInner');
 const timelineOuter = document.getElementById('timelineOuter');
+timelineOuter.addEventListener('scroll', () => {
+  ruler.style.transform = 'translateX(' + (-timelineOuter.scrollLeft) + 'px)';
+});
 const playheadEl = document.getElementById('playheadEl');
 
 function genId() { return 'x' + Date.now() + Math.random().toString(36).slice(2,8); }
@@ -950,7 +957,7 @@ function deleteClip(trackId, clipId) {
   pushUndoSnapshot();
   const t = tracks.find(t=>t.id===trackId);
   t.clips = t.clips.filter(c=>c.id!==clipId);
-  if (selectedClipId === clipId) selectedClipId = null;
+  if (fadeModeClipId === clipId) fadeModeClipId = null;
   saveProject();
   renderAll();
 }
@@ -985,9 +992,10 @@ function showClipContextMenu(trackId, clipId, x, y) {
   const clip = t && t.clips.find(c=>c.id===clipId);
   if (!clip) return;
   showContextMenu(x, y, [
-    { label:'Copy', action: () => { clipboard = { assetId:clip.assetId, trimIn:clip.trimIn, trimOut:clip.trimOut, duration:clip.duration }; } },
     { label:'Cut', action: () => { clipboard = { assetId:clip.assetId, trimIn:clip.trimIn, trimOut:clip.trimOut, duration:clip.duration }; deleteClip(trackId, clipId); } },
+    { label:'Copy', action: () => { clipboard = { assetId:clip.assetId, trimIn:clip.trimIn, trimOut:clip.trimOut, duration:clip.duration }; } },
     { label:'Split at playhead', action: () => splitClipAtPlayhead(trackId, clipId) },
+    { label:'Fade', action: () => { fadeModeClipId = clip.id; renderLanes(); } },
     { label:'Delete', danger:true, action: () => deleteClip(trackId, clipId) }
   ]);
 }
@@ -1019,7 +1027,7 @@ function splitClipAtPlayhead(trackId, clipId) {
   const right = { id:genId(), assetId:clip.assetId, start:splitPoint, duration:rightDur, trimIn:leftTrimOut, trimOut:clip.trimOut,
     fadeIn:0, fadeOut: clip.fadeOut||0, waveformUrl: makeWaveformUrl(rightVisible, Math.max(rightDur*PPS,28), ROW_H_JS-16) };
   t.clips = t.clips.filter(c=>c.id!==clipId).concat([left, right]);
-  if (selectedClipId === clipId) selectedClipId = null;
+  if (fadeModeClipId === clipId) fadeModeClipId = null;
   saveProject();
   renderAll();
 }
@@ -1062,29 +1070,18 @@ function onScrubEnd() {
   scrubbing=false;
   if (scrubWasPlaying) play();
 }
-function deselectClip(e) {
-  if (selectedClipId) { selectedClipId = null; selectionMode = 'move'; tapState = null; renderLanes(); }
+function exitFadeMode() {
+  if (fadeModeClipId) { fadeModeClipId = null; renderLanes(); }
 }
-ruler.addEventListener('pointerdown', (e) => { closeContextMenu(); deselectClip(); onScrubStart(e); });
+ruler.addEventListener('pointerdown', (e) => { closeContextMenu(); exitFadeMode(); onScrubStart(e); });
 playheadEl.addEventListener('pointerdown', (e) => { e.stopPropagation(); closeContextMenu(); onScrubStart(e); });
 window.addEventListener('pointermove', onScrubMove);
 window.addEventListener('pointerup', onScrubEnd);
 
-function handleClipTap(trackId, clipId) {
-  const now = Date.now();
-  if (tapState && tapState.clipId === clipId && (now - tapState.lastTime) < DOUBLE_TAP_MS) {
-    tapState.count = (tapState.count % 3) + 1;
-  } else {
-    tapState = { clipId, count: 1 };
-  }
-  tapState.lastTime = now;
-  selectedClipId = clipId;
-  selectionMode = tapState.count === 1 ? 'move' : tapState.count === 2 ? 'trim' : 'fade';
-  renderLanes();
-}
 function onClipPointerDown(e, trackId, clip) {
   e.stopPropagation();
   closeContextMenu();
+  if (fadeModeClipId && fadeModeClipId !== clip.id) exitFadeMode();
   clipPress = { trackId, clipId: clip.id, startX:e.clientX, startY:e.clientY, moved:false, longPressFired:false };
   clipPress.timer = setTimeout(() => {
     if (!clipPress || clipPress.moved) return;
@@ -1094,7 +1091,7 @@ function onClipPointerDown(e, trackId, clip) {
 }
 function onEmptyLanePointerDown(e, trackId) {
   closeContextMenu();
-  deselectClip();
+  exitFadeMode();
   emptyPress = { trackId, startX:e.clientX, startY:e.clientY, moved:false, longPressFired:false };
   emptyPress.timer = setTimeout(() => {
     if (!emptyPress || emptyPress.moved) return;
@@ -1108,13 +1105,11 @@ window.addEventListener('pointermove', (e) => {
     if (Math.hypot(dx,dy) > MOVE_THRESHOLD) {
       clipPress.moved = true;
       clearTimeout(clipPress.timer);
-      if (selectedClipId === clipPress.clipId && (selectionMode==='move' || selectionMode==='fade')) {
-        const t = tracks.find(t=>t.id===clipPress.trackId);
-        const clip = t && t.clips.find(c=>c.id===clipPress.clipId);
-        if (clip) {
-          pushUndoSnapshot();
-          dragState = { trackId:clipPress.trackId, id:clipPress.clipId, startX:clipPress.startX, origStart:clip.start, moved:true, snapped:true };
-        }
+      const t = tracks.find(t=>t.id===clipPress.trackId);
+      const clip = t && t.clips.find(c=>c.id===clipPress.clipId);
+      if (clip) {
+        pushUndoSnapshot();
+        dragState = { trackId:clipPress.trackId, id:clipPress.clipId, startX:clipPress.startX, origStart:clip.start, moved:true, snapped:true };
       }
     }
   }
@@ -1123,22 +1118,18 @@ window.addEventListener('pointermove', (e) => {
     if (Math.hypot(dx,dy) > MOVE_THRESHOLD) {
       emptyPress.moved = true;
       clearTimeout(emptyPress.timer);
-      onScrubStart({ clientX: emptyPress.startX, preventDefault(){} });
+      // no scrub-start here: dragging empty track space no longer moves the playhead,
+      // this just lets the browser's native horizontal scroll take over
     }
   }
 });
 window.addEventListener('pointerup', () => {
   if (clipPress) {
     clearTimeout(clipPress.timer);
-    if (!clipPress.moved && !clipPress.longPressFired) handleClipTap(clipPress.trackId, clipPress.clipId);
     clipPress = null;
   }
   if (emptyPress) {
     clearTimeout(emptyPress.timer);
-    if (!emptyPress.moved && !emptyPress.longPressFired) {
-      playheadPos = xToSec(emptyPress.startX);
-      renderLanes();
-    }
     emptyPress = null;
   }
 });
@@ -1265,6 +1256,9 @@ function renderRuler() {
   const width = totalDuration*PPS + 40;
   timelineInner.style.width = width+'px';
   timelineInner.style.minWidth = '100%';
+  ruler.style.width = width+'px';
+  ruler.style.minWidth = '100%';
+  ruler.style.transform = 'translateX(' + (-timelineOuter.scrollLeft) + 'px)';
   ruler.innerHTML = '';
   for (let i=0;i<=tickCount;i++) {
     const tick = document.createElement('div');
@@ -1292,13 +1286,12 @@ function renderLanes() {
       lane.appendChild(hint);
     }
     t.clips.forEach((c, idx) => {
-      const isSelected = selectedClipId === c.id;
-      const mode = isSelected ? selectionMode : null;
+      const isFadeActive = fadeModeClipId === c.id;
       const block = document.createElement('div');
-      block.className = 'clip-block' + (dragState && dragState.id===c.id?' dragging':'') + (isSelected?' selected':'');
+      block.className = 'clip-block' + (dragState && dragState.id===c.id?' dragging':'') + (isFadeActive?' fade-active':'');
       block.style.left = (c.start*PPS)+'px';
       block.style.width = Math.max(c.duration*PPS, 28)+'px';
-      block.title = 'Clip '+(idx+1)+' — '+fmt(c.duration) + (isSelected ? ' — ' + mode + ' mode' : '');
+      block.title = 'Clip '+(idx+1)+' — '+fmt(c.duration);
       if (c.waveformUrl) {
         block.style.backgroundImage = 'url(' + c.waveformUrl + ')';
         block.style.backgroundSize = '100% 100%';
@@ -1309,44 +1302,38 @@ function renderLanes() {
       numLabel.style.fontSize = '9px'; numLabel.style.opacity = '0.75';
       numLabel.textContent = idx+1;
       block.appendChild(numLabel);
-      if (mode) {
-        const modeTag = document.createElement('span');
-        modeTag.style.position = 'absolute'; modeTag.style.right = '3px'; modeTag.style.top = '2px';
-        modeTag.style.fontSize = '8px'; modeTag.style.opacity = '0.8'; modeTag.style.textTransform = 'uppercase';
-        modeTag.textContent = mode;
-        block.appendChild(modeTag);
-      }
       const widthPx = Math.max(c.duration*PPS, 28);
-      if ((c.fadeIn||0) > 0) {
-        const fw = document.createElement('div');
-        fw.style.cssText = 'position:absolute; left:0; top:0; bottom:0; width:'+Math.min(c.fadeIn*PPS, widthPx/2)+'px; background:linear-gradient(to right, rgba(0,0,0,0.55), transparent); pointer-events:none;';
-        block.appendChild(fw);
-      }
-      if ((c.fadeOut||0) > 0) {
-        const fw = document.createElement('div');
-        fw.style.cssText = 'position:absolute; right:0; top:0; bottom:0; width:'+Math.min(c.fadeOut*PPS, widthPx/2)+'px; background:linear-gradient(to left, rgba(0,0,0,0.55), transparent); pointer-events:none;';
-        block.appendChild(fw);
+      const rowInnerH = ROW_H_JS - 16;
+      const fadeInPx = Math.min((c.fadeIn||0)*PPS, widthPx/2);
+      const fadeOutPx = Math.min((c.fadeOut||0)*PPS, widthPx/2);
+      if (fadeInPx > 0 || fadeOutPx > 0) {
+        const svgHtml = '<svg width="'+widthPx+'" height="'+rowInnerH+'" viewBox="0 0 '+widthPx+' '+rowInnerH+
+          '" style="position:absolute;left:0;top:0;pointer-events:none;">'+
+          '<polyline points="0,'+rowInnerH+' '+fadeInPx+',0 '+(widthPx-fadeOutPx)+',0 '+widthPx+','+rowInnerH+
+          '" fill="none" stroke="#f4d03f" stroke-width="2"/></svg>';
+        const svgWrap = document.createElement('div');
+        svgWrap.innerHTML = svgHtml;
+        block.appendChild(svgWrap.firstChild);
       }
       block.addEventListener('pointerdown', (e) => onClipPointerDown(e, t.id, c));
       clipBlockEls.set(c.id, block);
-      if (mode === 'trim') {
-        const leftHandle = document.createElement('div');
-        leftHandle.className = 'trim-handle left';
-        leftHandle.addEventListener('pointerdown', (e) => startTrimDrag(e, t.id, c, 'left'));
-        block.appendChild(leftHandle);
-        const rightHandle = document.createElement('div');
-        rightHandle.className = 'trim-handle right';
-        rightHandle.addEventListener('pointerdown', (e) => startTrimDrag(e, t.id, c, 'right'));
-        block.appendChild(rightHandle);
-      } else if (mode === 'fade') {
-        const leftHandle = document.createElement('div');
-        leftHandle.className = 'fade-handle left';
-        leftHandle.addEventListener('pointerdown', (e) => startFadeDrag(e, t.id, c, 'left'));
-        block.appendChild(leftHandle);
-        const rightHandle = document.createElement('div');
-        rightHandle.className = 'fade-handle right';
-        rightHandle.addEventListener('pointerdown', (e) => startFadeDrag(e, t.id, c, 'right'));
-        block.appendChild(rightHandle);
+      const leftHandle = document.createElement('div');
+      leftHandle.className = 'trim-handle left';
+      leftHandle.addEventListener('pointerdown', (e) => startTrimDrag(e, t.id, c, 'left'));
+      block.appendChild(leftHandle);
+      const rightHandle = document.createElement('div');
+      rightHandle.className = 'trim-handle right';
+      rightHandle.addEventListener('pointerdown', (e) => startTrimDrag(e, t.id, c, 'right'));
+      block.appendChild(rightHandle);
+      if (isFadeActive) {
+        const fLeft = document.createElement('div');
+        fLeft.className = 'fade-handle left';
+        fLeft.addEventListener('pointerdown', (e) => startFadeDrag(e, t.id, c, 'left'));
+        block.appendChild(fLeft);
+        const fRight = document.createElement('div');
+        fRight.className = 'fade-handle right';
+        fRight.addEventListener('pointerdown', (e) => startFadeDrag(e, t.id, c, 'right'));
+        block.appendChild(fRight);
       }
       lane.appendChild(block);
     });
@@ -1523,7 +1510,7 @@ async function switchProject(id) {
   await flushSaveNow();
   teardownCurrentTracks();
   tracks = [];
-  selectedClipId = null; undoStack = []; redoStack = [];
+  fadeModeClipId = null; undoStack = []; redoStack = [];
   activeProjectId = id;
   const db = await openDB();
   const rec = await getKey(db, 'proj:'+id) || { tracks: [], playheadPos: 0 };
@@ -1540,7 +1527,7 @@ async function createProject() {
   const id = genId();
   const name = 'Project ' + (projectList.length+1);
   projectList.push({id, name});
-  tracks = []; selectedClipId=null; undoStack=[]; redoStack=[]; playheadPos=0; projectAssets = [];
+  tracks = []; fadeModeClipId=null; undoStack=[]; redoStack=[]; playheadPos=0; projectAssets = [];
   activeProjectId = id;
   addTrack();
   await saveMetaNow();
