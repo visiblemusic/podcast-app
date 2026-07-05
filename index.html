@@ -67,7 +67,7 @@
   .ms-btn.solo-on { background:var(--amber); color:#1c1a17; border-color:var(--amber); }
   .vol-slider { flex:1; min-width:0; height:16px; }
 
-  #timelineOuter { flex:1; overflow-x:auto; background:var(--panel); touch-action:pan-x pan-y; }
+  #timelineOuter { flex:1; overflow-x:auto; background:var(--panel); touch-action:manipulation; }
   #timelineInner { position:relative; }
   #ruler { position:relative; height:26px; border-bottom:1px solid var(--border); cursor:pointer; box-sizing:border-box; }
   .tick { position:absolute; top:0; bottom:0; width:1px; background:#524c40; }
@@ -113,7 +113,7 @@
     <div class="notice" id="notice"></div>
 
     <div class="transport" style="flex-wrap:wrap;">
-      <div class="tape-title-block"><div class="tape-title">Tape</div><div class="tape-version" id="versionTag">v11</div></div>
+      <div class="tape-title-block"><div class="tape-title">Tape</div><div class="tape-version" id="versionTag">v11.2</div></div>
       <div class="v-divider" style="height:36px;"></div>
       <button id="toStartBtn" class="tbtn" style="font-size:16px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back to start">|◀</button>
       <button id="skipBackBtn" class="tbtn" style="font-size:12px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back 10 seconds">-10s</button>
@@ -329,7 +329,7 @@ const timeSelectionBtn = document.getElementById('timeSelectionBtn');
 timeSelectionBtn.addEventListener('click', () => {
   timeSelectionMode = !timeSelectionMode;
   timeSelectionBtn.classList.toggle('active', timeSelectionMode);
-  timelineOuter.style.touchAction = timeSelectionMode ? 'none' : 'pan-x pan-y';
+  timelineOuter.style.touchAction = timeSelectionMode ? 'none' : 'manipulation';
   if (!timeSelectionMode) { timeSelection = null; renderTimeSelectionOverlay(); }
 });
 const zoomInBtn = document.getElementById('zoomInBtn');
@@ -1146,7 +1146,7 @@ function showContextMenu(x, y, items, align) {
   contextMenuOverlay.addEventListener('pointerdown', closeContextMenu);
   document.body.appendChild(contextMenuOverlay);
   contextMenuEl = document.createElement('div');
-  const transform = align === 'below' ? 'translate(0, 0)' : 'translate(-50%,-110%)';
+  const transform = align === 'below' ? 'translate(0, 0)' : align === 'center' ? 'translate(-50%, -50%)' : 'translate(-50%,-110%)';
   contextMenuEl.style.cssText = 'position:fixed; left:'+x+'px; top:'+y+'px; transform:'+transform+'; max-height:70vh; overflow-y:auto;'+
     'background:#2a2721; border:1px solid #f4d03f; border-radius:8px; padding:6px; display:flex; flex-direction:row; flex-wrap:nowrap; gap:4px; z-index:41; box-shadow:0 4px 14px rgba(0,0,0,.6);';
   items.forEach(item => {
@@ -1179,9 +1179,17 @@ function showClipContextMenu(trackId, clipId, x, y) {
     { label:'Delete', danger:true, action: () => deleteClip(trackId, clipId) }
   ]);
 }
-function showPasteMenu(trackId, posSec, x, y) {
-  if (!clipboard || !clipboard.length) return;
-  showContextMenu(x, y, [ { label:'Paste', action: () => pasteAtPosition(trackId, posSec) } ]);
+function showPasteMenu(trackId, screenX) {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (!clipboard || !clipboard.length) return;
+      const posSec = xToSec(screenX);
+      const lane = laneEls.get(trackId);
+      const rect = lane ? lane.getBoundingClientRect() : null;
+      const y = rect ? (rect.top + rect.height/2) : window.innerHeight/2;
+      showContextMenu(screenX, y, [ { label:'Paste', action: () => pasteAtPosition(trackId, posSec) } ], 'center');
+    });
+  });
 }
 
 /* ---------- Split / Paste ---------- */
@@ -1324,6 +1332,7 @@ function deleteSelectionContents(ripple) {
   if (!timeSelection) return;
   const { start, end } = timeSelection;
   const dur = end - start;
+  const savedScrollLeft = timelineOuter.scrollLeft;
   pushUndoSnapshot();
   tracks.forEach(t => {
     let newClips = cutRangeFromClips(t.clips, start, end);
@@ -1342,6 +1351,7 @@ function deleteSelectionContents(ripple) {
   timeSelection = null;
   saveProject();
   renderAll();
+  timelineOuter.scrollLeft = savedScrollLeft;
 }
 ruler.addEventListener('pointerdown', (e) => {
   if (timeSelectionMode) { onSelectionPointerDown(e); return; }
@@ -1421,7 +1431,7 @@ window.addEventListener('pointerup', () => {
       const now = Date.now();
       if (emptyTapState && emptyTapState.trackId === emptyPress.trackId &&
           Math.abs(emptyTapState.x - emptyPress.startX) < 30 && (now - emptyTapState.lastTime) < DOUBLE_TAP_MS) {
-        if (clipboard) showPasteMenu(emptyPress.trackId, xToSec(emptyPress.startX), emptyPress.startX, emptyPress.startY);
+        if (clipboard && clipboard.length) showPasteMenu(emptyPress.trackId, emptyPress.startX);
         emptyTapState = null;
       } else {
         emptyTapState = { trackId: emptyPress.trackId, x: emptyPress.startX, lastTime: now };
@@ -1539,6 +1549,7 @@ window.addEventListener('pointerup', () => {
 /* ---------- Rendering ---------- */
 let liveBlockEl = null;
 let clipBlockEls = new Map();
+let laneEls = new Map();
 let lastRenderedTickCount = -1;
 function renderPlayheadPosition() {
   playheadEl.style.left = (playheadPos*PPS)+'px';
@@ -1580,6 +1591,7 @@ function renderLanes() {
   lanesContainer.innerHTML = '';
   liveBlockEl = null;
   clipBlockEls.clear();
+  laneEls.clear();
   tracks.forEach(t => {
     const lane = document.createElement('div');
     lane.className = 'track-lane';
@@ -1658,6 +1670,7 @@ function renderLanes() {
       }
     }
     lanesContainer.appendChild(lane);
+    laneEls.set(t.id, lane);
   });
   renderPlayheadPosition();
 }
