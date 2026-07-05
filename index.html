@@ -8,7 +8,7 @@
   :root {
     --bg:#0c0b0a; --panel:#1c1a17; --border:#34302a; --text:#ede4d3; --dim:#948a78;
     --amber:#e8a33d; --red:#c0392b; --red-dim:rgba(192,57,43,.35);
-    --teal:#2f4a48; --teal-light:#cde8e0; --row-h:78px;
+    --teal:#2f4a48; --teal-light:#cde8e0; --row-h:64px;
   }
   * { box-sizing:border-box; -webkit-user-select:none; user-select:none; }
   html,body { margin:0; padding:0; background:var(--bg); color:var(--text);
@@ -19,8 +19,8 @@
   .notice { display:none; gap:8px; align-items:flex-start; background:rgba(192,57,43,.12);
     border:1px solid var(--red); color:#f0c9c0; font-size:13px; padding:10px 12px; border-radius:8px; margin-bottom:16px; }
   .notice.show { display:flex; }
-  .transport { display:flex; align-items:center; gap:14px; background:var(--panel);
-    border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:16px;
+  .transport { display:flex; align-items:center; gap:12px; background:var(--panel);
+    border:1px solid var(--border); border-radius:12px; padding:9px 14px; margin-bottom:16px;
     position:sticky; top:0; z-index:30; }
   .tbtn { width:50px; height:50px; border-radius:50%; border:none; flex-shrink:0; cursor:pointer;
     display:flex; align-items:center; justify-content:center; font-size:18px; }
@@ -42,8 +42,8 @@
   .mixer { display:flex; border:1px solid var(--border); border-radius:12px; overflow:hidden; }
   .headers-col { width:140px; flex-shrink:0; background:var(--panel); border-right:1px solid var(--border); }
   .ruler-spacer { height:26px; border-bottom:1px solid var(--border); }
-  .track-header { height:var(--row-h); border-bottom:1px solid var(--border); padding:6px 8px;
-    display:flex; flex-direction:column; justify-content:space-between; gap:4px; }
+  .track-header { height:var(--row-h); border-bottom:1px solid var(--border); padding:8px 8px;
+    display:flex; flex-direction:column; justify-content:flex-start; gap:8px; }
   .track-header:last-child { border-bottom:none; }
   .th-top { display:flex; align-items:center; gap:6px; }
   .th-name { font-size:11px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -60,7 +60,7 @@
   #timelineInner { position:relative; }
   #ruler { position:relative; height:26px; border-bottom:1px solid var(--border); cursor:pointer; box-sizing:border-box; }
   .tick { position:absolute; top:0; bottom:0; width:1px; background:#524c40; }
-  .tick-label { position:absolute; top:2px; font-size:9px; color:var(--dim); }
+  .tick-label { position:absolute; top:2px; font-size:11px; color:var(--dim); }
   .track-lane { position:relative; height:var(--row-h); border-bottom:1px solid var(--border); box-sizing:border-box; cursor:pointer; }
   .track-lane:last-child { border-bottom:none; }
   .empty-hint { font-size:11px; color:#514c40; position:absolute; left:8px; top:50%; transform:translateY(-50%); }
@@ -93,8 +93,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v7.2</span></h1>
-  <p class="sub">multi-track recorder — arm a track, record, mix</p>
+  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v7.3</span></h1>
   <div class="notice" id="notice"></div>
 
   <div class="transport" style="flex-wrap:wrap;">
@@ -103,8 +102,8 @@
     <button id="recordBtn" class="tbtn" aria-label="Record">●</button>
     <button id="playBtn" class="tbtn" aria-label="Play">▶</button>
     <button id="skipFwdBtn" class="tbtn" style="font-size:12px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Forward 10 seconds">+10s</button>
-    <button id="undoBtn" class="tbtn" style="font-size:18px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Undo" disabled>↶</button>
-    <button id="redoBtn" class="tbtn" style="font-size:18px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Redo" disabled>↷</button>
+    <button id="undoBtn" class="tbtn" style="background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Undo" disabled><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg></button>
+    <button id="redoBtn" class="tbtn" style="background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Redo" disabled><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z"/></svg></button>
     <div class="transport-info">
       <div id="timer">00:00.0</div>
       <div class="meter-track"><div id="meterFill"></div></div>
@@ -175,6 +174,7 @@
 <script>
 let PPS = 40;
 const MIN_CLIP_DUR = 0.04;
+const ROW_H_JS = 64;
 
 let audioCtx = null;
 let stream = null, mediaRecorder = null, chunks = [];
@@ -465,7 +465,7 @@ async function importProjectFile(file) {
         if (!asset) continue;
         const visible = sliceAudioBuffer(asset.buffer, trimIn, trimOut);
         track.clips.push({ id: sc.id || genId(), assetId, start: sc.start, duration: sc.duration, trimIn, trimOut,
-          waveformUrl: makeWaveformUrl(visible, Math.max(sc.duration*PPS, 28), 78-16) });
+          waveformUrl: makeWaveformUrl(visible, Math.max(sc.duration*PPS, 28), ROW_H_JS-16) });
       }
       tracks.push(track);
     }
@@ -564,7 +564,7 @@ async function addPickedFileToTimeline(pf) {
     const assetId = genId();
     projectAssets.push({ id:assetId, name:pf.name, blob:pf.file, buffer, mimeType: pf.file.type || 'audio/mpeg', size: pf.file.size });
     target.clips.push({ id:genId(), assetId, start:newStart, duration:buffer.duration, trimIn:0, trimOut:buffer.duration,
-      waveformUrl: makeWaveformUrl(buffer, Math.max(buffer.duration*PPS, 28), 78-16) });
+      waveformUrl: makeWaveformUrl(buffer, Math.max(buffer.duration*PPS, 28), ROW_H_JS-16) });
     playheadPos = newEnd;
     saveProject();
     renderAll();
@@ -715,7 +715,7 @@ function makeTrimmedClip(original, sliceStartSec, sliceEndSec, newAbsStart) {
   const newTrimOut = original.trimIn + sliceEndSec;
   const visible = sliceAudioBuffer(asset.buffer, newTrimIn, newTrimOut);
   return { id: genId(), assetId: original.assetId, start:newAbsStart, duration:dur, trimIn:newTrimIn, trimOut:newTrimOut,
-    waveformUrl: makeWaveformUrl(visible, Math.max(dur*PPS, 28), 78-16) };
+    waveformUrl: makeWaveformUrl(visible, Math.max(dur*PPS, 28), ROW_H_JS-16) };
 }
 function resolveOverlaps(trackClips, newStart, newEnd, excludeId) {
   const toRemove=[], toAdd=[];
@@ -826,7 +826,7 @@ async function startRecording() {
       projectAssets.push({ id: assetId, name: 'Recording ' + (projectAssets.length+1), blob: rawBlob, buffer: decoded, mimeType: rawBlob.type, size: rawBlob.size });
       trk.clips.push({ id:genId(), assetId, start:newStart, duration:decoded.duration,
         trimIn:0, trimOut:decoded.duration,
-        waveformUrl: makeWaveformUrl(decoded, Math.max(decoded.duration*PPS, 28), 78-16) });
+        waveformUrl: makeWaveformUrl(decoded, Math.max(decoded.duration*PPS, 28), ROW_H_JS-16) });
       playheadPos = newEnd;
       saveProject();
       renderAll();
@@ -989,7 +989,7 @@ window.addEventListener('pointermove', (e) => {
     clip.duration = clip.trimOut - clip.trimIn;
   }
   const visibleNow = sliceAudioBuffer(asset.buffer, clip.trimIn, clip.trimOut);
-  clip.waveformUrl = makeWaveformUrl(visibleNow, Math.max(clip.duration*PPS, 28), 78-16);
+  clip.waveformUrl = makeWaveformUrl(visibleNow, Math.max(clip.duration*PPS, 28), ROW_H_JS-16);
   renderLanes();
 });
 window.addEventListener('pointerup', () => {
@@ -1001,7 +1001,7 @@ window.addEventListener('pointerup', () => {
   const asset = getAsset(clip.assetId);
   if (asset) {
     const visible = sliceAudioBuffer(asset.buffer, clip.trimIn, clip.trimOut);
-    clip.waveformUrl = makeWaveformUrl(visible, Math.max(clip.duration*PPS, 28), 78-16);
+    clip.waveformUrl = makeWaveformUrl(visible, Math.max(clip.duration*PPS, 28), ROW_H_JS-16);
   }
   const newStart = clip.start, newEnd = newStart + clip.duration;
   const { toRemove, toAdd } = resolveOverlaps(t.clips, newStart, newEnd, clip.id);
@@ -1270,7 +1270,7 @@ async function applyProjectRecord(record) {
       if (!asset) continue;
       const visible = sliceAudioBuffer(asset.buffer, trimIn, trimOut);
       track.clips.push({ id:sc.id, assetId, start:sc.start, duration:sc.duration, trimIn, trimOut,
-        waveformUrl: makeWaveformUrl(visible, Math.max(sc.duration*PPS, 28), 78-16) });
+        waveformUrl: makeWaveformUrl(visible, Math.max(sc.duration*PPS, 28), ROW_H_JS-16) });
     }
     tracks.push(track);
   }
