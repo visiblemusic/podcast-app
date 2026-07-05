@@ -73,11 +73,9 @@
     background:rgba(244,208,63,0.55); touch-action:none; z-index:6; }
   .trim-handle.left { left:0; border-radius:6px 0 0 6px; }
   .trim-handle.right { right:0; border-radius:0 6px 6px 0; }
-  .clip-menu { position:absolute; bottom:calc(100% + 4px); left:50%; transform:translateX(-50%);
-    background:#2a2721; border:1px solid #f4d03f; border-radius:6px; padding:4px; display:flex; gap:4px;
-    white-space:nowrap; z-index:10; box-shadow:0 2px 8px rgba(0,0,0,.5); }
-  .clip-menu button { background:var(--red); color:var(--text); border:none; border-radius:4px;
-    font-size:11px; padding:5px 10px; cursor:pointer; }
+  .fade-handle { position:absolute; top:0; width:22px; height:22px; cursor:ew-resize; touch-action:none; z-index:6; }
+  .fade-handle.left { left:0; background:linear-gradient(135deg, rgba(205,232,224,0.9) 50%, transparent 50%); }
+  .fade-handle.right { right:0; background:linear-gradient(225deg, rgba(205,232,224,0.9) 50%, transparent 50%); }
   .live-block { position:absolute; top:8px; height:calc(var(--row-h) - 16px); border-radius:6px; background:var(--red-dim); border:1px solid var(--red); }
   .playhead { position:absolute; top:0; bottom:0; width:14px; margin-left:-7px; z-index:6; touch-action:none; cursor:ew-resize; }
   .playhead .line { position:absolute; left:6px; top:0; bottom:0; width:2px; background:var(--amber); }
@@ -93,7 +91,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v7.3</span></h1>
+  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v8</span></h1>
   <div class="notice" id="notice"></div>
 
   <div class="transport" style="flex-wrap:wrap;">
@@ -187,7 +185,17 @@ let playheadPos = 0;
 let playing = false, activeSources = [], playRAF = null, playStartCtxTime = 0, playStartPlayhead = 0;
 let dragState = null;
 let selectedClipId = null;
+let selectionMode = 'move'; // 'move' | 'trim' | 'fade' — only meaningful while selectedClipId is set
+let tapState = null; // {clipId, count, lastTime}
+let clipPress = null; // long-press/tap tracking on a clip body
+let emptyPress = null; // long-press/tap tracking on empty lane space
 let trimDragState = null;
+let fadeDragState = null;
+let clipboard = null; // {assetId, trimIn, trimOut, duration}
+let contextMenuEl = null, contextMenuOverlay = null;
+const DOUBLE_TAP_MS = 400;
+const LONG_PRESS_MS = 550;
+const MOVE_THRESHOLD = 6;
 let undoStack = [];
 let redoStack = [];
 function cloneTracksClips() {
@@ -397,7 +405,7 @@ async function exportProject() {
     })));
     const exportTracks = tracks.map(t => ({
       id:t.id, name:t.name, volume:t.volume, muted:t.muted, soloed:t.soloed, armed:t.armed,
-      clips: t.clips.map(c => ({ id:c.id, assetId:c.assetId, start:c.start, duration:c.duration, trimIn:c.trimIn, trimOut:c.trimOut }))
+      clips: t.clips.map(c => ({ id:c.id, assetId:c.assetId, start:c.start, duration:c.duration, trimIn:c.trimIn, trimOut:c.trimOut, fadeIn:c.fadeIn||0, fadeOut:c.fadeOut||0 }))
     }));
     const exportObj = { formatVersion:2, projectName: p ? p.name : 'Project', playheadPos, assets: exportAssets, tracks: exportTracks };
     const json = JSON.stringify(exportObj);
@@ -465,6 +473,7 @@ async function importProjectFile(file) {
         if (!asset) continue;
         const visible = sliceAudioBuffer(asset.buffer, trimIn, trimOut);
         track.clips.push({ id: sc.id || genId(), assetId, start: sc.start, duration: sc.duration, trimIn, trimOut,
+          fadeIn: sc.fadeIn||0, fadeOut: sc.fadeOut||0,
           waveformUrl: makeWaveformUrl(visible, Math.max(sc.duration*PPS, 28), ROW_H_JS-16) });
       }
       tracks.push(track);
@@ -564,6 +573,7 @@ async function addPickedFileToTimeline(pf) {
     const assetId = genId();
     projectAssets.push({ id:assetId, name:pf.name, blob:pf.file, buffer, mimeType: pf.file.type || 'audio/mpeg', size: pf.file.size });
     target.clips.push({ id:genId(), assetId, start:newStart, duration:buffer.duration, trimIn:0, trimOut:buffer.duration,
+      fadeIn:0, fadeOut:0,
       waveformUrl: makeWaveformUrl(buffer, Math.max(buffer.duration*PPS, 28), ROW_H_JS-16) });
     playheadPos = newEnd;
     saveProject();
@@ -715,6 +725,7 @@ function makeTrimmedClip(original, sliceStartSec, sliceEndSec, newAbsStart) {
   const newTrimOut = original.trimIn + sliceEndSec;
   const visible = sliceAudioBuffer(asset.buffer, newTrimIn, newTrimOut);
   return { id: genId(), assetId: original.assetId, start:newAbsStart, duration:dur, trimIn:newTrimIn, trimOut:newTrimOut,
+    fadeIn:0, fadeOut:0,
     waveformUrl: makeWaveformUrl(visible, Math.max(dur*PPS, 28), ROW_H_JS-16) };
 }
 function resolveOverlaps(trackClips, newStart, newEnd, excludeId) {
@@ -825,7 +836,7 @@ async function startRecording() {
       const assetId = genId();
       projectAssets.push({ id: assetId, name: 'Recording ' + (projectAssets.length+1), blob: rawBlob, buffer: decoded, mimeType: rawBlob.type, size: rawBlob.size });
       trk.clips.push({ id:genId(), assetId, start:newStart, duration:decoded.duration,
-        trimIn:0, trimOut:decoded.duration,
+        trimIn:0, trimOut:decoded.duration, fadeIn:0, fadeOut:0,
         waveformUrl: makeWaveformUrl(decoded, Math.max(decoded.duration*PPS, 28), ROW_H_JS-16) });
       playheadPos = newEnd;
       saveProject();
@@ -878,7 +889,28 @@ function play() {
       if (!asset) continue;
       const src = ctx.createBufferSource();
       src.buffer = asset.buffer;
-      src.connect(t.gainNode);
+      const fadeIn = c.fadeIn||0, fadeOut = c.fadeOut||0;
+      if (fadeIn > 0 || fadeOut > 0) {
+        const fadeGain = ctx.createGain();
+        src.connect(fadeGain);
+        fadeGain.connect(t.gainNode);
+        src.onended = () => { try{fadeGain.disconnect();}catch(e){} try{src.disconnect();}catch(e){} };
+        const clipStartCtx = c.start >= playheadPos ? playStartCtxTime + (c.start - playheadPos) : playStartCtxTime;
+        const clipEndCtx = playStartCtxTime + (c.start + c.duration - playheadPos);
+        if (fadeIn > 0 && c.start >= playheadPos) {
+          fadeGain.gain.setValueAtTime(0, clipStartCtx);
+          fadeGain.gain.linearRampToValueAtTime(1, clipStartCtx + fadeIn);
+        } else {
+          fadeGain.gain.setValueAtTime(1, playStartCtxTime);
+        }
+        if (fadeOut > 0) {
+          const fadeOutStart = Math.max(clipEndCtx - fadeOut, playStartCtxTime);
+          fadeGain.gain.setValueAtTime(1, fadeOutStart);
+          fadeGain.gain.linearRampToValueAtTime(0, clipEndCtx);
+        }
+      } else {
+        src.connect(t.gainNode);
+      }
       if (c.start >= playheadPos) src.start(playStartCtxTime + (c.start-playheadPos), c.trimIn, c.duration);
       else {
         const into = playheadPos - c.start;
@@ -918,6 +950,94 @@ function deleteClip(trackId, clipId) {
   pushUndoSnapshot();
   const t = tracks.find(t=>t.id===trackId);
   t.clips = t.clips.filter(c=>c.id!==clipId);
+  if (selectedClipId === clipId) selectedClipId = null;
+  saveProject();
+  renderAll();
+}
+
+/* ---------- Context menu (long-press) ---------- */
+function closeContextMenu() {
+  if (contextMenuEl) { contextMenuEl.remove(); contextMenuEl = null; }
+  if (contextMenuOverlay) { contextMenuOverlay.remove(); contextMenuOverlay = null; }
+}
+function showContextMenu(x, y, items) {
+  closeContextMenu();
+  contextMenuOverlay = document.createElement('div');
+  contextMenuOverlay.style.cssText = 'position:fixed; inset:0; z-index:40;';
+  contextMenuOverlay.addEventListener('pointerdown', closeContextMenu);
+  document.body.appendChild(contextMenuOverlay);
+  contextMenuEl = document.createElement('div');
+  contextMenuEl.style.cssText = 'position:fixed; left:'+x+'px; top:'+y+'px; transform:translate(-50%,-110%);'+
+    'background:#2a2721; border:1px solid #f4d03f; border-radius:8px; padding:6px; display:flex; flex-direction:column; gap:4px; z-index:41; box-shadow:0 4px 14px rgba(0,0,0,.6);';
+  items.forEach(item => {
+    const btn = document.createElement('button');
+    btn.textContent = item.label;
+    btn.style.cssText = 'background:'+(item.danger?'var(--red)':'var(--teal)')+'; color:'+(item.danger?'var(--text)':'var(--teal-light)')+
+      '; border:none; border-radius:5px; font-size:13px; padding:9px 18px; cursor:pointer; white-space:nowrap;';
+    btn.addEventListener('pointerdown', e=>e.stopPropagation());
+    btn.addEventListener('click', (e) => { e.stopPropagation(); closeContextMenu(); item.action(); });
+    contextMenuEl.appendChild(btn);
+  });
+  document.body.appendChild(contextMenuEl);
+}
+function showClipContextMenu(trackId, clipId, x, y) {
+  const t = tracks.find(t=>t.id===trackId);
+  const clip = t && t.clips.find(c=>c.id===clipId);
+  if (!clip) return;
+  showContextMenu(x, y, [
+    { label:'Copy', action: () => { clipboard = { assetId:clip.assetId, trimIn:clip.trimIn, trimOut:clip.trimOut, duration:clip.duration }; } },
+    { label:'Cut', action: () => { clipboard = { assetId:clip.assetId, trimIn:clip.trimIn, trimOut:clip.trimOut, duration:clip.duration }; deleteClip(trackId, clipId); } },
+    { label:'Split at playhead', action: () => splitClipAtPlayhead(trackId, clipId) },
+    { label:'Delete', danger:true, action: () => deleteClip(trackId, clipId) }
+  ]);
+}
+function showPasteMenu(trackId, posSec, x, y) {
+  if (!clipboard) return;
+  showContextMenu(x, y, [ { label:'Paste', action: () => pasteAtPosition(trackId, posSec) } ]);
+}
+
+/* ---------- Split / Paste ---------- */
+function splitClipAtPlayhead(trackId, clipId) {
+  const t = tracks.find(t=>t.id===trackId);
+  const clip = t && t.clips.find(c=>c.id===clipId);
+  if (!clip) return;
+  const splitPoint = playheadPos;
+  if (splitPoint <= clip.start + MIN_CLIP_DUR || splitPoint >= clip.start + clip.duration - MIN_CLIP_DUR) {
+    showNotice('Move the playhead inside the clip to split it.');
+    return;
+  }
+  const asset = getAsset(clip.assetId);
+  if (!asset) return;
+  pushUndoSnapshot();
+  const offsetIntoClip = splitPoint - clip.start;
+  const leftDur = offsetIntoClip, rightDur = clip.duration - offsetIntoClip;
+  const leftTrimOut = clip.trimIn + leftDur;
+  const leftVisible = sliceAudioBuffer(asset.buffer, clip.trimIn, leftTrimOut);
+  const rightVisible = sliceAudioBuffer(asset.buffer, leftTrimOut, clip.trimOut);
+  const left = { id:genId(), assetId:clip.assetId, start:clip.start, duration:leftDur, trimIn:clip.trimIn, trimOut:leftTrimOut,
+    fadeIn: clip.fadeIn||0, fadeOut:0, waveformUrl: makeWaveformUrl(leftVisible, Math.max(leftDur*PPS,28), ROW_H_JS-16) };
+  const right = { id:genId(), assetId:clip.assetId, start:splitPoint, duration:rightDur, trimIn:leftTrimOut, trimOut:clip.trimOut,
+    fadeIn:0, fadeOut: clip.fadeOut||0, waveformUrl: makeWaveformUrl(rightVisible, Math.max(rightDur*PPS,28), ROW_H_JS-16) };
+  t.clips = t.clips.filter(c=>c.id!==clipId).concat([left, right]);
+  if (selectedClipId === clipId) selectedClipId = null;
+  saveProject();
+  renderAll();
+}
+function pasteAtPosition(trackId, posSec) {
+  if (!clipboard) return;
+  const t = tracks.find(t=>t.id===trackId);
+  if (!t) return;
+  const asset = getAsset(clipboard.assetId);
+  if (!asset) { showNotice('That recording is no longer in this project.'); return; }
+  pushUndoSnapshot();
+  const newStart = Math.max(0, posSec), newEnd = newStart + clipboard.duration;
+  const { toRemove, toAdd } = resolveOverlaps(t.clips, newStart, newEnd, null);
+  t.clips = t.clips.filter(c => !toRemove.includes(c.id));
+  t.clips.push(...toAdd);
+  const visible = sliceAudioBuffer(asset.buffer, clipboard.trimIn, clipboard.trimOut);
+  t.clips.push({ id:genId(), assetId:clipboard.assetId, start:newStart, duration:clipboard.duration,
+    trimIn:clipboard.trimIn, trimOut:clipboard.trimOut, fadeIn:0, fadeOut:0,
+    waveformUrl: makeWaveformUrl(visible, Math.max(clipboard.duration*PPS,28), ROW_H_JS-16) });
   saveProject();
   renderAll();
 }
@@ -943,22 +1063,112 @@ function onScrubEnd() {
   if (scrubWasPlaying) play();
 }
 function deselectClip(e) {
-  if (selectedClipId) { selectedClipId = null; renderLanes(); }
+  if (selectedClipId) { selectedClipId = null; selectionMode = 'move'; tapState = null; renderLanes(); }
 }
-ruler.addEventListener('pointerdown', (e) => { deselectClip(); onScrubStart(e); });
-playheadEl.addEventListener('pointerdown', (e) => { e.stopPropagation(); onScrubStart(e); });
+ruler.addEventListener('pointerdown', (e) => { closeContextMenu(); deselectClip(); onScrubStart(e); });
+playheadEl.addEventListener('pointerdown', (e) => { e.stopPropagation(); closeContextMenu(); onScrubStart(e); });
 window.addEventListener('pointermove', onScrubMove);
 window.addEventListener('pointerup', onScrubEnd);
 
-function startClipDrag(e, trackId, clip) {
-  e.stopPropagation();
-  if (selectedClipId !== clip.id) {
-    selectedClipId = clip.id;
-    renderLanes();
-    return; // this tap only selects; a fresh press-and-drag moves it
+function handleClipTap(trackId, clipId) {
+  const now = Date.now();
+  if (tapState && tapState.clipId === clipId && (now - tapState.lastTime) < DOUBLE_TAP_MS) {
+    tapState.count = (tapState.count % 3) + 1;
+  } else {
+    tapState = { clipId, count: 1 };
   }
-  dragState = { trackId, id:clip.id, startX:e.clientX, origStart:clip.start, moved:false, snapped:false };
+  tapState.lastTime = now;
+  selectedClipId = clipId;
+  selectionMode = tapState.count === 1 ? 'move' : tapState.count === 2 ? 'trim' : 'fade';
+  renderLanes();
 }
+function onClipPointerDown(e, trackId, clip) {
+  e.stopPropagation();
+  closeContextMenu();
+  clipPress = { trackId, clipId: clip.id, startX:e.clientX, startY:e.clientY, moved:false, longPressFired:false };
+  clipPress.timer = setTimeout(() => {
+    if (!clipPress || clipPress.moved) return;
+    clipPress.longPressFired = true;
+    showClipContextMenu(trackId, clip.id, clipPress.startX, clipPress.startY);
+  }, LONG_PRESS_MS);
+}
+function onEmptyLanePointerDown(e, trackId) {
+  closeContextMenu();
+  deselectClip();
+  emptyPress = { trackId, startX:e.clientX, startY:e.clientY, moved:false, longPressFired:false };
+  emptyPress.timer = setTimeout(() => {
+    if (!emptyPress || emptyPress.moved) return;
+    emptyPress.longPressFired = true;
+    if (clipboard) showPasteMenu(emptyPress.trackId, xToSec(emptyPress.startX), emptyPress.startX, emptyPress.startY);
+  }, LONG_PRESS_MS);
+}
+window.addEventListener('pointermove', (e) => {
+  if (clipPress && !clipPress.moved) {
+    const dx = e.clientX-clipPress.startX, dy = e.clientY-clipPress.startY;
+    if (Math.hypot(dx,dy) > MOVE_THRESHOLD) {
+      clipPress.moved = true;
+      clearTimeout(clipPress.timer);
+      if (selectedClipId === clipPress.clipId && (selectionMode==='move' || selectionMode==='fade')) {
+        const t = tracks.find(t=>t.id===clipPress.trackId);
+        const clip = t && t.clips.find(c=>c.id===clipPress.clipId);
+        if (clip) {
+          pushUndoSnapshot();
+          dragState = { trackId:clipPress.trackId, id:clipPress.clipId, startX:clipPress.startX, origStart:clip.start, moved:true, snapped:true };
+        }
+      }
+    }
+  }
+  if (emptyPress && !emptyPress.moved) {
+    const dx = e.clientX-emptyPress.startX, dy = e.clientY-emptyPress.startY;
+    if (Math.hypot(dx,dy) > MOVE_THRESHOLD) {
+      emptyPress.moved = true;
+      clearTimeout(emptyPress.timer);
+      onScrubStart({ clientX: emptyPress.startX, preventDefault(){} });
+    }
+  }
+});
+window.addEventListener('pointerup', () => {
+  if (clipPress) {
+    clearTimeout(clipPress.timer);
+    if (!clipPress.moved && !clipPress.longPressFired) handleClipTap(clipPress.trackId, clipPress.clipId);
+    clipPress = null;
+  }
+  if (emptyPress) {
+    clearTimeout(emptyPress.timer);
+    if (!emptyPress.moved && !emptyPress.longPressFired) {
+      playheadPos = xToSec(emptyPress.startX);
+      renderLanes();
+    }
+    emptyPress = null;
+  }
+});
+
+function startFadeDrag(e, trackId, clip, edge) {
+  e.stopPropagation();
+  pushUndoSnapshot();
+  fadeDragState = { trackId, id:clip.id, edge, startX:e.clientX, origFadeIn: clip.fadeIn||0, origFadeOut: clip.fadeOut||0 };
+}
+window.addEventListener('pointermove', (e) => {
+  if (!fadeDragState) return;
+  const dx = e.clientX - fadeDragState.startX;
+  const deltaSec = dx / PPS;
+  const t = tracks.find(t=>t.id===fadeDragState.trackId);
+  const clip = t && t.clips.find(c=>c.id===fadeDragState.id);
+  if (!clip) return;
+  const maxFade = clip.duration / 2;
+  if (fadeDragState.edge === 'left') {
+    clip.fadeIn = Math.max(0, Math.min(maxFade, fadeDragState.origFadeIn + deltaSec));
+  } else {
+    clip.fadeOut = Math.max(0, Math.min(maxFade, fadeDragState.origFadeOut - deltaSec));
+  }
+  renderLanes();
+});
+window.addEventListener('pointerup', () => {
+  if (!fadeDragState) return;
+  fadeDragState = null;
+  saveProject();
+});
+
 function startTrimDrag(e, trackId, clip, edge) {
   e.stopPropagation();
   pushUndoSnapshot();
@@ -1075,7 +1285,7 @@ function renderLanes() {
   tracks.forEach(t => {
     const lane = document.createElement('div');
     lane.className = 'track-lane';
-    lane.addEventListener('pointerdown', (e) => { if (e.target===lane) { deselectClip(); onScrubStart(e); } });
+    lane.addEventListener('pointerdown', (e) => { if (e.target===lane) onEmptyLanePointerDown(e, t.id); });
     if (t.clips.length===0 && !(isRecording && armedTrack() && armedTrack().id===t.id)) {
       const hint = document.createElement('span');
       hint.className='empty-hint'; hint.textContent='empty';
@@ -1083,11 +1293,12 @@ function renderLanes() {
     }
     t.clips.forEach((c, idx) => {
       const isSelected = selectedClipId === c.id;
+      const mode = isSelected ? selectionMode : null;
       const block = document.createElement('div');
       block.className = 'clip-block' + (dragState && dragState.id===c.id?' dragging':'') + (isSelected?' selected':'');
       block.style.left = (c.start*PPS)+'px';
       block.style.width = Math.max(c.duration*PPS, 28)+'px';
-      block.title = 'Clip '+(idx+1)+' — '+fmt(c.duration);
+      block.title = 'Clip '+(idx+1)+' — '+fmt(c.duration) + (isSelected ? ' — ' + mode + ' mode' : '');
       if (c.waveformUrl) {
         block.style.backgroundImage = 'url(' + c.waveformUrl + ')';
         block.style.backgroundSize = '100% 100%';
@@ -1098,9 +1309,27 @@ function renderLanes() {
       numLabel.style.fontSize = '9px'; numLabel.style.opacity = '0.75';
       numLabel.textContent = idx+1;
       block.appendChild(numLabel);
-      block.addEventListener('pointerdown', (e) => startClipDrag(e, t.id, c));
+      if (mode) {
+        const modeTag = document.createElement('span');
+        modeTag.style.position = 'absolute'; modeTag.style.right = '3px'; modeTag.style.top = '2px';
+        modeTag.style.fontSize = '8px'; modeTag.style.opacity = '0.8'; modeTag.style.textTransform = 'uppercase';
+        modeTag.textContent = mode;
+        block.appendChild(modeTag);
+      }
+      const widthPx = Math.max(c.duration*PPS, 28);
+      if ((c.fadeIn||0) > 0) {
+        const fw = document.createElement('div');
+        fw.style.cssText = 'position:absolute; left:0; top:0; bottom:0; width:'+Math.min(c.fadeIn*PPS, widthPx/2)+'px; background:linear-gradient(to right, rgba(0,0,0,0.55), transparent); pointer-events:none;';
+        block.appendChild(fw);
+      }
+      if ((c.fadeOut||0) > 0) {
+        const fw = document.createElement('div');
+        fw.style.cssText = 'position:absolute; right:0; top:0; bottom:0; width:'+Math.min(c.fadeOut*PPS, widthPx/2)+'px; background:linear-gradient(to left, rgba(0,0,0,0.55), transparent); pointer-events:none;';
+        block.appendChild(fw);
+      }
+      block.addEventListener('pointerdown', (e) => onClipPointerDown(e, t.id, c));
       clipBlockEls.set(c.id, block);
-      if (isSelected) {
+      if (mode === 'trim') {
         const leftHandle = document.createElement('div');
         leftHandle.className = 'trim-handle left';
         leftHandle.addEventListener('pointerdown', (e) => startTrimDrag(e, t.id, c, 'left'));
@@ -1109,14 +1338,15 @@ function renderLanes() {
         rightHandle.className = 'trim-handle right';
         rightHandle.addEventListener('pointerdown', (e) => startTrimDrag(e, t.id, c, 'right'));
         block.appendChild(rightHandle);
-        const menu = document.createElement('div');
-        menu.className = 'clip-menu';
-        const delBtn = document.createElement('button');
-        delBtn.textContent = 'Delete';
-        delBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
-        delBtn.addEventListener('click', (e) => { e.stopPropagation(); deleteClip(t.id, c.id); });
-        menu.appendChild(delBtn);
-        block.appendChild(menu);
+      } else if (mode === 'fade') {
+        const leftHandle = document.createElement('div');
+        leftHandle.className = 'fade-handle left';
+        leftHandle.addEventListener('pointerdown', (e) => startFadeDrag(e, t.id, c, 'left'));
+        block.appendChild(leftHandle);
+        const rightHandle = document.createElement('div');
+        rightHandle.className = 'fade-handle right';
+        rightHandle.addEventListener('pointerdown', (e) => startFadeDrag(e, t.id, c, 'right'));
+        block.appendChild(rightHandle);
       }
       lane.appendChild(block);
     });
@@ -1220,7 +1450,7 @@ async function doSaveNow() {
     })));
     const serialTracks = tracks.map(t => ({
       id:t.id, name:t.name, volume:t.volume, muted:t.muted, soloed:t.soloed, armed:t.armed,
-      clips: t.clips.map(c => ({ id:c.id, assetId:c.assetId, start:c.start, duration:c.duration, trimIn:c.trimIn, trimOut:c.trimOut }))
+      clips: t.clips.map(c => ({ id:c.id, assetId:c.assetId, start:c.start, duration:c.duration, trimIn:c.trimIn, trimOut:c.trimOut, fadeIn:c.fadeIn||0, fadeOut:c.fadeOut||0 }))
     }));
     await putKey(db, 'proj:'+activeProjectId, { assets: serialAssets, tracks: serialTracks, playheadPos });
     savedTag.style.opacity='1';
@@ -1270,6 +1500,7 @@ async function applyProjectRecord(record) {
       if (!asset) continue;
       const visible = sliceAudioBuffer(asset.buffer, trimIn, trimOut);
       track.clips.push({ id:sc.id, assetId, start:sc.start, duration:sc.duration, trimIn, trimOut,
+        fadeIn: sc.fadeIn||0, fadeOut: sc.fadeOut||0,
         waveformUrl: makeWaveformUrl(visible, Math.max(sc.duration*PPS, 28), ROW_H_JS-16) });
     }
     tracks.push(track);
