@@ -85,13 +85,16 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v5</span></h1>
+  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v5.2</span></h1>
   <p class="sub">multi-track recorder — arm a track, record, mix</p>
   <div class="notice" id="notice"></div>
 
-  <div class="transport">
+  <div class="transport" style="flex-wrap:wrap;">
+    <button id="toStartBtn" class="tbtn" style="width:36px;height:36px;font-size:14px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back to start">|◀</button>
+    <button id="skipBackBtn" class="tbtn" style="width:36px;height:36px;font-size:11px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back 10 seconds">-10s</button>
     <button id="recordBtn" class="tbtn" aria-label="Record">●</button>
     <button id="playBtn" class="tbtn" aria-label="Play">▶</button>
+    <button id="skipFwdBtn" class="tbtn" style="width:36px;height:36px;font-size:11px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Forward 10 seconds">+10s</button>
     <button id="undoBtn" class="tbtn" style="width:38px;height:38px;font-size:16px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Undo" disabled>↶</button>
     <button id="redoBtn" class="tbtn" style="width:38px;height:38px;font-size:16px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Redo" disabled>↷</button>
     <div class="transport-info">
@@ -101,7 +104,7 @@
       <div style="display:flex; align-items:center; gap:6px; margin-top:6px;">
         <button id="monitorBtn" style="font-size:9px; color:var(--amber); background:transparent; border:1px solid var(--border); border-radius:4px; padding:2px 6px; cursor:pointer;">🎙 enable monitor</button>
         <span style="font-size:9px; color:var(--dim); text-transform:uppercase;">Gain</span>
-        <input type="range" id="gainSlider" min="1" max="15" step="0.1" value="3" style="flex:1; height:14px;">
+        <input type="range" id="gainSlider" min="1" max="3" step="0.1" value="3" style="flex:1; height:14px;">
         <span id="gainReadout" style="font-size:9px; color:var(--dim); width:28px;">3.0x</span>
       </div>
     </div>
@@ -120,7 +123,11 @@
 
   <div class="section-row">
     <span class="section-label">Tracks</span>
-    <button id="addTrackBtn">+ Add track</button>
+    <div style="display:flex; gap:6px;">
+      <button id="zoomOutBtn" style="font-size:13px; padding:3px 10px; border-radius:6px; border:1px solid var(--border); background:var(--panel); color:var(--text);">−</button>
+      <button id="zoomInBtn" style="font-size:13px; padding:3px 10px; border-radius:6px; border:1px solid var(--border); background:var(--panel); color:var(--text);">+</button>
+      <button id="addTrackBtn">+ Add track</button>
+    </div>
   </div>
 
   <div class="mixer">
@@ -139,7 +146,7 @@
 </div>
 
 <script>
-const PPS = 40;
+let PPS = 40;
 const MIN_CLIP_DUR = 0.04;
 
 let audioCtx = null;
@@ -200,6 +207,17 @@ const recordBtn = document.getElementById('recordBtn');
 const playBtn = document.getElementById('playBtn');
 const undoBtn = document.getElementById('undoBtn');
 const redoBtn = document.getElementById('redoBtn');
+const toStartBtn = document.getElementById('toStartBtn');
+const skipBackBtn = document.getElementById('skipBackBtn');
+const skipFwdBtn = document.getElementById('skipFwdBtn');
+function seekTo(pos) {
+  playheadPos = Math.max(0, pos);
+  renderLanes();
+  if (playing) play();
+}
+toStartBtn.addEventListener('click', () => seekTo(0));
+skipBackBtn.addEventListener('click', () => seekTo(playheadPos - 10));
+skipFwdBtn.addEventListener('click', () => seekTo(playheadPos + 10));
 undoBtn.addEventListener('click', undo);
 redoBtn.addEventListener('click', redo);
 const timerEl = document.getElementById('timer');
@@ -226,6 +244,18 @@ gainSlider.addEventListener('input', (e) => {
 });
 const notice = document.getElementById('notice');
 const addTrackBtn = document.getElementById('addTrackBtn');
+const zoomInBtn = document.getElementById('zoomInBtn');
+const zoomOutBtn = document.getElementById('zoomOutBtn');
+function setZoom(newPPS) {
+  newPPS = Math.max(10, Math.min(200, newPPS));
+  if (newPPS === PPS) return;
+  const playheadScreenX = playheadPos*PPS - timelineOuter.scrollLeft;
+  PPS = newPPS;
+  renderLanes();
+  timelineOuter.scrollLeft = Math.max(0, playheadPos*PPS - playheadScreenX);
+}
+zoomInBtn.addEventListener('click', () => setZoom(PPS * 1.4));
+zoomOutBtn.addEventListener('click', () => setZoom(PPS / 1.4));
 const projectSelect = document.getElementById('projectSelect');
 const newProjectBtn = document.getElementById('newProjectBtn');
 const renameProjectBtn = document.getElementById('renameProjectBtn');
