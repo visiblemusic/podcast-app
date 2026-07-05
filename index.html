@@ -267,29 +267,42 @@ function tickLevel() {
   meterFill.style.width = Math.min(1, Math.sqrt(sum/data.length)*4)*100+'%';
   meterRafId = requestAnimationFrame(tickLevel);
 }
+let recordingStarting = false;
 async function startRecording() {
+  if (isRecording || recordingStarting) return;
   const target = armedTrack();
   if (!target) { showNotice('Add and arm a track before recording.'); return; }
-  try { stream = await navigator.mediaDevices.getUserMedia({ audio:true }); }
-  catch (err) { showNotice("Microphone access was blocked or failed. Check the site's permission settings and that this page is loaded over HTTPS."); return; }
+  recordingStarting = true;
+  recordBtn.disabled = true;
+  let localStream;
+  try { localStream = await navigator.mediaDevices.getUserMedia({ audio:true }); }
+  catch (err) {
+    showNotice("Microphone access was blocked or failed. Check the site's permission settings and that this page is loaded over HTTPS.");
+    recordingStarting = false; recordBtn.disabled = false;
+    return;
+  }
   const ctx = ensureAudioCtx();
-  if (ctx.state==='suspended') ctx.resume();
-  const source = ctx.createMediaStreamSource(stream);
-  analyser = ctx.createAnalyser(); analyser.fftSize=512;
-  source.connect(analyser);
+  if (ctx.state==='suspended') await ctx.resume();
+  const source = ctx.createMediaStreamSource(localStream);
+  const localAnalyser = ctx.createAnalyser(); localAnalyser.fftSize=512;
+  source.connect(localAnalyser);
+  analyser = localAnalyser;
   tickLevel();
 
   let mimeType='';
   if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType='audio/mp4';
   else if (MediaRecorder.isTypeSupported('audio/webm')) mimeType='audio/webm';
-  mediaRecorder = mimeType ? new MediaRecorder(stream,{mimeType}) : new MediaRecorder(stream);
-  chunks=[]; takeStartPos = playheadPos;
+  const localRecorder = mimeType ? new MediaRecorder(localStream,{mimeType}) : new MediaRecorder(localStream);
+  const localChunks = [];
+  mediaRecorder = localRecorder;
+  stream = localStream;
+  takeStartPos = playheadPos;
 
-  mediaRecorder.ondataavailable = e => { if (e.data.size>0) chunks.push(e.data); };
-  mediaRecorder.onstop = async () => {
-    const rawBlob = new Blob(chunks, { type: mediaRecorder.mimeType || 'audio/webm' });
-    cancelAnimationFrame(meterRafId); meterFill.style.width='0%'; analyser=null;
-    stream.getTracks().forEach(t=>t.stop());
+  localRecorder.ondataavailable = e => { if (e.data.size>0) localChunks.push(e.data); };
+  localRecorder.onstop = async () => {
+    const rawBlob = new Blob(localChunks, { type: localRecorder.mimeType || 'audio/webm' });
+    if (analyser === localAnalyser) { cancelAnimationFrame(meterRafId); meterFill.style.width='0%'; analyser=null; }
+    localStream.getTracks().forEach(t=>t.stop());
     try {
       const arrBuf = await rawBlob.arrayBuffer();
       const decoded = await ctx.decodeAudioData(arrBuf);
@@ -306,8 +319,10 @@ async function startRecording() {
     } catch (e) { showNotice('Could not process the recording: '+e.message); }
   };
   recordStartTime = Date.now();
-  mediaRecorder.start();
+  localRecorder.start();
   isRecording = true;
+  recordingStarting = false;
+  recordBtn.disabled = false;
   recordBtn.classList.add('recording'); recordBtn.textContent='■';
   playBtn.disabled = true;
   statusEl.textContent = 'recording onto "' + target.name + '"';
@@ -318,6 +333,7 @@ async function startRecording() {
   }, 50);
 }
 function stopRecording() {
+  if (!isRecording) return;
   if (mediaRecorder && mediaRecorder.state!=='inactive') mediaRecorder.stop();
   isRecording=false;
   recordBtn.classList.remove('recording'); recordBtn.textContent='●';
