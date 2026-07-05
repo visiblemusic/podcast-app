@@ -19,20 +19,25 @@
   .notice { display:none; gap:8px; align-items:flex-start; background:rgba(192,57,43,.12);
     border:1px solid var(--red); color:#f0c9c0; font-size:13px; padding:10px 12px; border-radius:8px; margin-bottom:16px; }
   .notice.show { display:flex; }
-  .sticky-header-block { position:sticky; top:0; z-index:30; background:var(--bg); padding-top:20px; }
-  .transport { display:flex; align-items:center; gap:12px; background:var(--panel);
-    border:1px solid var(--border); border-radius:12px; padding:9px 14px; margin-bottom:16px; }
+  .sticky-header-block { position:sticky; top:0; z-index:30; background:var(--bg); padding-top:14px; }
+  .transport { display:flex; align-items:center; gap:10px; background:var(--panel);
+    border:1px solid var(--border); border-radius:12px; padding:6px 12px; margin-bottom:14px; }
+  .tape-title { font-size:13px; text-transform:uppercase; letter-spacing:.12em; color:var(--amber); white-space:nowrap; }
+  .tape-title span { color:var(--dim); font-size:10px; letter-spacing:0; text-transform:none; }
   .tbtn { width:50px; height:50px; border-radius:50%; border:none; flex-shrink:0; cursor:pointer;
     display:flex; align-items:center; justify-content:center; font-size:18px; }
   #recordBtn { background:var(--red); color:var(--text); }
   #recordBtn.recording { background:var(--amber); color:#1c1a17; }
   #playBtn { background:var(--teal); color:var(--teal-light); }
   .tbtn:disabled { opacity:.3; cursor:not-allowed; }
-  .transport-info { flex:1; min-width:0; }
-  #timer { font-size:19px; font-variant-numeric:tabular-nums; }
-  .meter-track { margin-top:6px; height:6px; width:100%; background:var(--border); border-radius:4px; overflow:hidden; }
-  #meterFill { height:100%; width:0%; background:var(--amber); }
-  #status { font-size:10px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; margin-top:4px; }
+  .timer-inline { font-size:13px; font-variant-numeric:tabular-nums; white-space:nowrap; margin-left:auto; }
+  .meter-vertical { width:8px; height:50px; background:var(--border); border-radius:4px; overflow:hidden;
+    display:flex; align-items:flex-end; flex-shrink:0; }
+  .meter-vertical #meterFill { width:100%; height:0%; background:var(--amber); }
+  .gain-knob { width:50px; height:50px; border-radius:50%; background:var(--panel); border:2px solid var(--border);
+    position:relative; cursor:pointer; flex-shrink:0; touch-action:none; }
+  .gain-knob-indicator { position:absolute; width:3px; height:18px; background:var(--amber); left:50%; top:4px;
+    margin-left:-1.5px; border-radius:2px; transform-origin:50% 21px; }
   #savedTag { font-size:10px; color:var(--dim); text-transform:uppercase; opacity:0; transition:opacity .3s; }
   .section-row { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px; }
   .section-label { font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; }
@@ -58,7 +63,7 @@
   .ms-btn.solo-on { background:var(--amber); color:#1c1a17; border-color:var(--amber); }
   .vol-slider { flex:1; min-width:0; height:16px; }
 
-  #timelineOuter { flex:1; overflow-x:auto; background:var(--panel); touch-action:pan-x; }
+  #timelineOuter { flex:1; overflow-x:auto; background:var(--panel); touch-action:pan-x pan-y; }
   #timelineInner { position:relative; }
   #ruler { position:relative; height:26px; border-bottom:1px solid var(--border); cursor:pointer; box-sizing:border-box; }
   .tick { position:absolute; top:0; bottom:0; width:1px; background:#524c40; }
@@ -79,7 +84,7 @@
   .fade-handle.left { left:0; background:linear-gradient(135deg, rgba(205,232,224,0.9) 50%, transparent 50%); }
   .fade-handle.right { right:0; background:linear-gradient(225deg, rgba(205,232,224,0.9) 50%, transparent 50%); }
   .live-block { position:absolute; top:8px; height:calc(var(--row-h) - 16px); border-radius:6px; background:var(--red-dim); border:1px solid var(--red); }
-  .playhead { position:absolute; top:0; bottom:0; width:14px; margin-left:-7px; z-index:6; touch-action:none; cursor:ew-resize; }
+  .playhead { position:absolute; top:0; bottom:0; width:14px; margin-left:-7px; z-index:6; pointer-events:none; }
   .playhead .line { position:absolute; left:6px; top:0; bottom:0; width:2px; background:var(--amber); }
   .playhead .handle { position:absolute; left:1px; top:-2px; width:12px; height:8px; background:var(--amber); border-radius:2px; }
   .asset-row, .picker-row { display:flex; align-items:center; gap:8px; padding:6px 4px; font-size:12px; border-bottom:1px solid var(--border); }
@@ -94,10 +99,10 @@
 <body>
 <div class="wrap">
   <div class="sticky-header-block">
-    <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v9</span></h1>
     <div class="notice" id="notice"></div>
 
     <div class="transport" style="flex-wrap:wrap;">
+      <span class="tape-title">Tape <span id="versionTag">v9.1</span></span>
       <button id="toStartBtn" class="tbtn" style="font-size:16px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back to start">|◀</button>
       <button id="skipBackBtn" class="tbtn" style="font-size:12px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back 10 seconds">-10s</button>
       <button id="recordBtn" class="tbtn" aria-label="Record">●</button>
@@ -105,17 +110,9 @@
       <button id="skipFwdBtn" class="tbtn" style="font-size:12px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Forward 10 seconds">+10s</button>
       <button id="undoBtn" class="tbtn" style="background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Undo" disabled><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg></button>
       <button id="redoBtn" class="tbtn" style="background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Redo" disabled><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z"/></svg></button>
-      <div class="transport-info">
-        <div id="timer">00:00.0</div>
-        <div class="meter-track"><div id="meterFill"></div></div>
-        <div id="status">ready</div>
-        <div style="display:flex; align-items:center; gap:6px; margin-top:6px;">
-          <button id="monitorBtn" style="font-size:9px; color:var(--amber); background:transparent; border:1px solid var(--border); border-radius:4px; padding:2px 6px; cursor:pointer;">🎙 enable monitor</button>
-          <span style="font-size:9px; color:var(--dim); text-transform:uppercase;">Gain</span>
-          <input type="range" id="gainSlider" min="1" max="6" step="0.1" value="6" style="flex:1; height:14px;">
-          <span id="gainReadout" style="font-size:9px; color:var(--dim); width:28px;">6.0x</span>
-        </div>
-      </div>
+      <div id="timer" class="timer-inline">00:00.0</div>
+      <div class="meter-vertical"><div id="meterFill"></div></div>
+      <div id="gainKnob" class="gain-knob" aria-label="Input gain"><div id="gainKnobIndicator" class="gain-knob-indicator"></div></div>
       <div id="savedTag">saved</div>
     </div>
 
@@ -191,7 +188,8 @@ let tracks = []; // {id, name, volume, muted, soloed, armed, gainNode, clips:[{i
 let playheadPos = 0;
 let playing = false, activeSources = [], playRAF = null, playStartCtxTime = 0, playStartPlayhead = 0;
 let dragState = null;
-let fadeModeClipId = null; // clip currently showing draggable fade handles
+let activeEditClipId = null; // clip currently showing draggable handles
+let activeEditType = null; // 'trim' | 'fade'
 let clipPress = null; // long-press/tap tracking on a clip body
 let emptyPress = null; // long-press/tap tracking on empty lane space
 let trimDragState = null;
@@ -228,7 +226,7 @@ function applySnapshot(snap) {
     };
   });
   applyTrackGains();
-  if (fadeModeClipId && !tracks.some(t => t.clips.some(c => c.id === fadeModeClipId))) fadeModeClipId = null;
+  if (activeEditClipId && !tracks.some(t => t.clips.some(c => c.id === activeEditClipId))) { activeEditClipId = null; activeEditType = null; }
 }
 function undo() {
   if (!undoStack.length) return;
@@ -273,26 +271,29 @@ undoBtn.addEventListener('click', undo);
 redoBtn.addEventListener('click', redo);
 const timerEl = document.getElementById('timer');
 const meterFill = document.getElementById('meterFill');
-const statusEl = document.getElementById('status');
 const savedTag = document.getElementById('savedTag');
-const gainSlider = document.getElementById('gainSlider');
-const gainReadout = document.getElementById('gainReadout');
-const monitorBtn = document.getElementById('monitorBtn');
-monitorBtn.addEventListener('click', async () => {
-  monitorBtn.disabled = true;
-  try {
-    await ensureMicGraph();
-    monitorBtn.textContent = '🎙 monitoring';
-  } catch (err) {
-    showNotice("Microphone access was blocked or failed. Check the site's permission settings and that this page is loaded over HTTPS.");
-    monitorBtn.disabled = false;
-  }
+const gainKnob = document.getElementById('gainKnob');
+const gainKnobIndicator = document.getElementById('gainKnobIndicator');
+const GAIN_MIN = 1, GAIN_MAX = 6;
+function updateGainKnobVisual() {
+  const pct = (inputGainValue - GAIN_MIN) / (GAIN_MAX - GAIN_MIN);
+  const angle = -135 + pct*270;
+  gainKnobIndicator.style.transform = 'rotate(' + angle + 'deg)';
+}
+let gainKnobDrag = null;
+gainKnob.addEventListener('pointerdown', (e) => {
+  gainKnobDrag = { startY: e.clientY, startVal: inputGainValue };
+  e.preventDefault();
 });
-gainSlider.addEventListener('input', (e) => {
-  inputGainValue = parseFloat(e.target.value);
-  gainReadout.textContent = inputGainValue.toFixed(1) + 'x';
+window.addEventListener('pointermove', (e) => {
+  if (!gainKnobDrag) return;
+  const dy = gainKnobDrag.startY - e.clientY;
+  const delta = (dy/120) * (GAIN_MAX-GAIN_MIN);
+  inputGainValue = Math.max(GAIN_MIN, Math.min(GAIN_MAX, gainKnobDrag.startVal + delta));
   if (activeBoostGain) activeBoostGain.gain.value = inputGainValue;
+  updateGainKnobVisual();
 });
+window.addEventListener('pointerup', () => { gainKnobDrag = null; });
 const notice = document.getElementById('notice');
 const addTrackBtn = document.getElementById('addTrackBtn');
 const followBtn = document.getElementById('followBtn');
@@ -441,7 +442,7 @@ async function importProjectFile(file) {
     const newId = genId();
     const name = (data.projectName || 'Imported Project') + ' (imported)';
     projectList.push({ id:newId, name });
-    tracks = []; fadeModeClipId=null; undoStack=[]; redoStack=[]; projectAssets = [];
+    tracks = []; activeEditClipId=null; activeEditType=null; undoStack=[]; redoStack=[]; projectAssets = [];
     activeProjectId = newId;
     const ctx = ensureAudioCtx();
     const isOldFormat = !data.assets;
@@ -588,6 +589,9 @@ async function addPickedFileToTimeline(pf) {
 }
 const headersList = document.getElementById('headersList');
 const ruler = document.getElementById('ruler');
+const playheadRulerMark = document.createElement('div');
+playheadRulerMark.style.cssText = 'position:absolute; top:0; bottom:0; width:2px; background:var(--amber); pointer-events:none; z-index:5;';
+ruler.appendChild(playheadRulerMark);
 const lanesContainer = document.getElementById('lanesContainer');
 const timelineInner = document.getElementById('timelineInner');
 const timelineOuter = document.getElementById('timelineOuter');
@@ -769,14 +773,13 @@ function tickLevel() {
   const data = new Uint8Array(analyser.frequencyBinCount);
   analyser.getByteTimeDomainData(data);
   let sum=0; for (let i=0;i<data.length;i++){ const v=(data[i]-128)/128; sum+=v*v; }
-  meterFill.style.width = Math.min(1, Math.sqrt(sum/data.length)*4)*100+'%';
+  meterFill.style.height = Math.min(1, Math.sqrt(sum/data.length)*4)*100+'%';
   meterRafId = requestAnimationFrame(tickLevel);
 }
 function resetRecordingUI() {
   isRecording = false;
   recordBtn.classList.remove('recording'); recordBtn.textContent = '●';
   playBtn.disabled = false;
-  statusEl.textContent = 'ready';
   clearInterval(elapsedInterval);
   timerEl.textContent = '00:00.0'; elapsed = 0;
 }
@@ -859,7 +862,6 @@ async function startRecording() {
   recordBtn.disabled = false;
   recordBtn.classList.add('recording'); recordBtn.textContent='■';
   playBtn.disabled = true;
-  statusEl.textContent = 'recording onto "' + target.name + '"';
   renderLanes();
   elapsedInterval = setInterval(() => {
     elapsed = (Date.now()-recordStartTime)/1000;
@@ -957,7 +959,7 @@ function deleteClip(trackId, clipId) {
   pushUndoSnapshot();
   const t = tracks.find(t=>t.id===trackId);
   t.clips = t.clips.filter(c=>c.id!==clipId);
-  if (fadeModeClipId === clipId) fadeModeClipId = null;
+  if (activeEditClipId === clipId) { activeEditClipId = null; activeEditType = null; }
   saveProject();
   renderAll();
 }
@@ -995,7 +997,8 @@ function showClipContextMenu(trackId, clipId, x, y) {
     { label:'Cut', action: () => { clipboard = { assetId:clip.assetId, trimIn:clip.trimIn, trimOut:clip.trimOut, duration:clip.duration }; deleteClip(trackId, clipId); } },
     { label:'Copy', action: () => { clipboard = { assetId:clip.assetId, trimIn:clip.trimIn, trimOut:clip.trimOut, duration:clip.duration }; } },
     { label:'Split at playhead', action: () => splitClipAtPlayhead(trackId, clipId) },
-    { label:'Fade', action: () => { fadeModeClipId = clip.id; renderLanes(); } },
+    { label:'Trim', action: () => { activeEditClipId = clip.id; activeEditType = 'trim'; renderLanes(); } },
+    { label:'Fade', action: () => { activeEditClipId = clip.id; activeEditType = 'fade'; renderLanes(); } },
     { label:'Delete', danger:true, action: () => deleteClip(trackId, clipId) }
   ]);
 }
@@ -1027,7 +1030,7 @@ function splitClipAtPlayhead(trackId, clipId) {
   const right = { id:genId(), assetId:clip.assetId, start:splitPoint, duration:rightDur, trimIn:leftTrimOut, trimOut:clip.trimOut,
     fadeIn:0, fadeOut: clip.fadeOut||0, waveformUrl: makeWaveformUrl(rightVisible, Math.max(rightDur*PPS,28), ROW_H_JS-16) };
   t.clips = t.clips.filter(c=>c.id!==clipId).concat([left, right]);
-  if (fadeModeClipId === clipId) fadeModeClipId = null;
+  if (activeEditClipId === clipId) { activeEditClipId = null; activeEditType = null; }
   saveProject();
   renderAll();
 }
@@ -1070,18 +1073,17 @@ function onScrubEnd() {
   scrubbing=false;
   if (scrubWasPlaying) play();
 }
-function exitFadeMode() {
-  if (fadeModeClipId) { fadeModeClipId = null; renderLanes(); }
+function exitEditMode() {
+  if (activeEditClipId) { activeEditClipId = null; activeEditType = null; renderLanes(); }
 }
-ruler.addEventListener('pointerdown', (e) => { closeContextMenu(); exitFadeMode(); onScrubStart(e); });
-playheadEl.addEventListener('pointerdown', (e) => { e.stopPropagation(); closeContextMenu(); onScrubStart(e); });
+ruler.addEventListener('pointerdown', (e) => { closeContextMenu(); exitEditMode(); onScrubStart(e); });
 window.addEventListener('pointermove', onScrubMove);
 window.addEventListener('pointerup', onScrubEnd);
 
 function onClipPointerDown(e, trackId, clip) {
   e.stopPropagation();
   closeContextMenu();
-  if (fadeModeClipId && fadeModeClipId !== clip.id) exitFadeMode();
+  if (activeEditClipId && activeEditClipId !== clip.id) exitEditMode();
   clipPress = { trackId, clipId: clip.id, startX:e.clientX, startY:e.clientY, moved:false, longPressFired:false };
   clipPress.timer = setTimeout(() => {
     if (!clipPress || clipPress.moved) return;
@@ -1091,7 +1093,7 @@ function onClipPointerDown(e, trackId, clip) {
 }
 function onEmptyLanePointerDown(e, trackId) {
   closeContextMenu();
-  exitFadeMode();
+  exitEditMode();
   emptyPress = { trackId, startX:e.clientX, startY:e.clientY, moved:false, longPressFired:false };
   emptyPress.timer = setTimeout(() => {
     if (!emptyPress || emptyPress.moved) return;
@@ -1242,7 +1244,10 @@ window.addEventListener('pointerup', () => {
 let liveBlockEl = null;
 let clipBlockEls = new Map();
 let lastRenderedTickCount = -1;
-function renderPlayheadPosition() { playheadEl.style.left = (playheadPos*PPS)+'px'; }
+function renderPlayheadPosition() {
+  playheadEl.style.left = (playheadPos*PPS)+'px';
+  playheadRulerMark.style.left = (playheadPos*PPS)+'px';
+}
 
 function totalDurationNow() {
   let m = Math.max(8, playheadPos+2, isRecording ? takeStartPos+elapsed : 0);
@@ -1270,6 +1275,7 @@ function renderRuler() {
       ruler.appendChild(label);
     }
   }
+  ruler.appendChild(playheadRulerMark);
 }
 function renderLanes() {
   renderRuler();
@@ -1286,9 +1292,10 @@ function renderLanes() {
       lane.appendChild(hint);
     }
     t.clips.forEach((c, idx) => {
-      const isFadeActive = fadeModeClipId === c.id;
+      const isTrimActive = activeEditClipId === c.id && activeEditType === 'trim';
+      const isFadeActive = activeEditClipId === c.id && activeEditType === 'fade';
       const block = document.createElement('div');
-      block.className = 'clip-block' + (dragState && dragState.id===c.id?' dragging':'') + (isFadeActive?' fade-active':'');
+      block.className = 'clip-block' + (dragState && dragState.id===c.id?' dragging':'') + ((isTrimActive||isFadeActive)?' fade-active':'');
       block.style.left = (c.start*PPS)+'px';
       block.style.width = Math.max(c.duration*PPS, 28)+'px';
       block.title = 'Clip '+(idx+1)+' — '+fmt(c.duration);
@@ -1317,14 +1324,16 @@ function renderLanes() {
       }
       block.addEventListener('pointerdown', (e) => onClipPointerDown(e, t.id, c));
       clipBlockEls.set(c.id, block);
-      const leftHandle = document.createElement('div');
-      leftHandle.className = 'trim-handle left';
-      leftHandle.addEventListener('pointerdown', (e) => startTrimDrag(e, t.id, c, 'left'));
-      block.appendChild(leftHandle);
-      const rightHandle = document.createElement('div');
-      rightHandle.className = 'trim-handle right';
-      rightHandle.addEventListener('pointerdown', (e) => startTrimDrag(e, t.id, c, 'right'));
-      block.appendChild(rightHandle);
+      if (isTrimActive) {
+        const leftHandle = document.createElement('div');
+        leftHandle.className = 'trim-handle left';
+        leftHandle.addEventListener('pointerdown', (e) => startTrimDrag(e, t.id, c, 'left'));
+        block.appendChild(leftHandle);
+        const rightHandle = document.createElement('div');
+        rightHandle.className = 'trim-handle right';
+        rightHandle.addEventListener('pointerdown', (e) => startTrimDrag(e, t.id, c, 'right'));
+        block.appendChild(rightHandle);
+      }
       if (isFadeActive) {
         const fLeft = document.createElement('div');
         fLeft.className = 'fade-handle left';
@@ -1510,7 +1519,7 @@ async function switchProject(id) {
   await flushSaveNow();
   teardownCurrentTracks();
   tracks = [];
-  fadeModeClipId = null; undoStack = []; redoStack = [];
+  activeEditClipId = null; activeEditType = null; undoStack = []; redoStack = [];
   activeProjectId = id;
   const db = await openDB();
   const rec = await getKey(db, 'proj:'+id) || { tracks: [], playheadPos: 0 };
@@ -1527,7 +1536,7 @@ async function createProject() {
   const id = genId();
   const name = 'Project ' + (projectList.length+1);
   projectList.push({id, name});
-  tracks = []; fadeModeClipId=null; undoStack=[]; redoStack=[]; playheadPos=0; projectAssets = [];
+  tracks = []; activeEditClipId=null; activeEditType=null; undoStack=[]; redoStack=[]; playheadPos=0; projectAssets = [];
   activeProjectId = id;
   addTrack();
   await saveMetaNow();
@@ -1587,6 +1596,7 @@ async function initProjects() {
   }
 }
 
+updateGainKnobVisual();
 initProjects();
 </script>
 </body>
