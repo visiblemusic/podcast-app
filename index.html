@@ -78,7 +78,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v3.1</span></h1>
+  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v3.2</span></h1>
   <p class="sub">multi-track recorder — arm a track, record, mix</p>
   <div class="notice" id="notice"></div>
 
@@ -259,6 +259,7 @@ function resolveOverlaps(trackClips, newStart, newEnd, excludeId) {
 }
 
 /* ---------- Recording ---------- */
+let micStream = null;
 function tickLevel() {
   if (!analyser) return;
   const data = new Uint8Array(analyser.frequencyBinCount);
@@ -266,6 +267,19 @@ function tickLevel() {
   let sum=0; for (let i=0;i<data.length;i++){ const v=(data[i]-128)/128; sum+=v*v; }
   meterFill.style.width = Math.min(1, Math.sqrt(sum/data.length)*4)*100+'%';
   meterRafId = requestAnimationFrame(tickLevel);
+}
+function resetRecordingUI() {
+  isRecording = false;
+  recordBtn.classList.remove('recording'); recordBtn.textContent = '●';
+  playBtn.disabled = false;
+  statusEl.textContent = 'ready';
+  clearInterval(elapsedInterval);
+  timerEl.textContent = '00:00.0'; elapsed = 0;
+}
+async function getMicStream() {
+  if (micStream && micStream.getTracks().some(t => t.readyState === 'live')) return micStream;
+  micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  return micStream;
 }
 let recordingStarting = false;
 async function startRecording() {
@@ -275,7 +289,7 @@ async function startRecording() {
   recordingStarting = true;
   recordBtn.disabled = true;
   let localStream;
-  try { localStream = await navigator.mediaDevices.getUserMedia({ audio:true }); }
+  try { localStream = await getMicStream(); }
   catch (err) {
     showNotice("Microphone access was blocked or failed. Check the site's permission settings and that this page is loaded over HTTPS.");
     recordingStarting = false; recordBtn.disabled = false;
@@ -297,12 +311,15 @@ async function startRecording() {
   mediaRecorder = localRecorder;
   stream = localStream;
   takeStartPos = playheadPos;
+  let handledStop = false;
 
   localRecorder.ondataavailable = e => { if (e.data.size>0) localChunks.push(e.data); };
   localRecorder.onstop = async () => {
+    if (handledStop) return;
+    handledStop = true;
+    if (isRecording) resetRecordingUI();
     const rawBlob = new Blob(localChunks, { type: localRecorder.mimeType || 'audio/webm' });
     if (analyser === localAnalyser) { cancelAnimationFrame(meterRafId); meterFill.style.width='0%'; analyser=null; }
-    localStream.getTracks().forEach(t=>t.stop());
     try {
       const arrBuf = await rawBlob.arrayBuffer();
       const decoded = await ctx.decodeAudioData(arrBuf);
@@ -318,6 +335,7 @@ async function startRecording() {
       renderAll();
     } catch (e) { showNotice('Could not process the recording: '+e.message); }
   };
+  localRecorder.onerror = () => { if (!handledStop) { handledStop = true; resetRecordingUI(); showNotice('Recording stopped unexpectedly. Please try again.'); } };
   recordStartTime = Date.now();
   localRecorder.start();
   isRecording = true;
@@ -335,12 +353,7 @@ async function startRecording() {
 function stopRecording() {
   if (!isRecording) return;
   if (mediaRecorder && mediaRecorder.state!=='inactive') mediaRecorder.stop();
-  isRecording=false;
-  recordBtn.classList.remove('recording'); recordBtn.textContent='●';
-  playBtn.disabled=false;
-  statusEl.textContent='ready';
-  clearInterval(elapsedInterval);
-  timerEl.textContent='00:00.0'; elapsed=0;
+  else resetRecordingUI();
 }
 recordBtn.addEventListener('click', () => { if (isRecording) stopRecording(); else startRecording(); });
 
