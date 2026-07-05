@@ -99,7 +99,8 @@
   .playhead { position:absolute; top:0; bottom:0; width:14px; margin-left:-7px; z-index:6; pointer-events:none; }
   .playhead .line { position:absolute; left:6px; top:0; bottom:0; width:2px; background:var(--amber); }
   .playhead .handle { position:absolute; left:1px; top:-2px; width:12px; height:8px; background:var(--amber); border-radius:2px; }
-  .asset-row, .picker-row { display:flex; align-items:center; gap:8px; padding:6px 4px; font-size:12px; border-bottom:1px solid var(--border); }
+  .asset-row { display:flex; flex-direction:column; align-items:stretch; gap:0; padding:6px 4px; font-size:12px; border-bottom:1px solid var(--border); cursor:pointer; }
+  .picker-row { display:flex; align-items:center; gap:8px; padding:6px 4px; font-size:12px; border-bottom:1px solid var(--border); }
   .asset-row:last-child, .picker-row:last-child { border-bottom:none; }
   .asset-row .aname, .picker-row .aname { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .asset-row .asize, .picker-row .asize { font-size:10px; color:var(--dim); flex-shrink:0; }
@@ -113,8 +114,8 @@
   <div class="sticky-header-block">
     <div class="notice" id="notice"></div>
 
-    <div class="transport" style="flex-wrap:wrap;">
-      <div class="tape-title-block"><div class="tape-title">Tape</div><div class="tape-version" id="versionTag">v11.3</div></div>
+    <div class="transport" style="flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch;">
+      <div class="tape-title-block"><div class="tape-title">Tape</div><div class="tape-version" id="versionTag">v12</div></div>
       <div class="v-divider" style="height:36px;"></div>
       <button id="toStartBtn" class="tbtn" style="font-size:16px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back to start">|◀</button>
       <button id="skipBackBtn" class="tbtn" style="font-size:12px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back 10 seconds">-10s</button>
@@ -177,9 +178,14 @@
 
     <div class="section-row" style="margin-top:16px;">
       <span class="section-label">Project files</span>
-      <button id="purgeAssetsBtn" style="font-size:10px; padding:3px 8px; border-radius:6px; border:1px solid var(--red); background:transparent; color:var(--red);">Purge unused</button>
+      <div style="display:flex; gap:8px;">
+        <button id="toggleAssetsBtn" style="font-size:10px; padding:3px 8px; border-radius:6px; border:1px solid var(--border); background:var(--panel); color:var(--text);">Hide</button>
+        <button id="purgeAssetsBtn" style="font-size:10px; padding:3px 8px; border-radius:6px; border:1px solid var(--red); background:transparent; color:var(--red);">Purge unused</button>
+      </div>
     </div>
-    <div id="assetList" style="background:var(--panel); border:1px solid var(--border); border-radius:10px; max-height:220px; overflow-y:auto; padding:6px;"></div>
+    <div id="assetListWrap">
+      <div id="assetList" style="background:var(--panel); border:1px solid var(--border); border-radius:10px; max-height:320px; overflow-y:auto; padding:6px;"></div>
+    </div>
   </div>
 </div>
 
@@ -383,11 +389,108 @@ zoomOutBtn.addEventListener('click', () => setZoom(PPS / 1.4));
 
 
 const assetList = document.getElementById('assetList');
+const assetListWrap = document.getElementById('assetListWrap');
+const toggleAssetsBtn = document.getElementById('toggleAssetsBtn');
 const purgeAssetsBtn = document.getElementById('purgeAssetsBtn');
+let expandedAssetId = null;
+let auditionAsset = null, auditionAudio = null, auditionRafId = null;
+let assetDragState = null;
+let assetsPanelVisible = true;
+toggleAssetsBtn.addEventListener('click', () => {
+  assetsPanelVisible = !assetsPanelVisible;
+  assetListWrap.style.display = assetsPanelVisible ? 'block' : 'none';
+  toggleAssetsBtn.textContent = assetsPanelVisible ? 'Hide' : 'Show';
+});
 function usedAssetIdSet() {
   const s = new Set();
   tracks.forEach(t => t.clips.forEach(c => s.add(c.assetId)));
   return s;
+}
+function getAssetWaveformUrl(asset, widthPx) {
+  widthPx = Math.max(50, Math.round(widthPx));
+  if (asset._waveformW === widthPx && asset._waveformUrl) return asset._waveformUrl;
+  asset._waveformUrl = makeWaveformUrl(asset.buffer, widthPx, 70);
+  asset._waveformW = widthPx;
+  return asset._waveformUrl;
+}
+function stopAuditionInternal() {
+  if (auditionAudio) { try { auditionAudio.pause(); } catch(e){} auditionAudio = null; }
+  cancelAnimationFrame(auditionRafId);
+  auditionAsset = null;
+}
+function stopAudition() {
+  stopAuditionInternal();
+  renderAssetList();
+}
+function startAuditionAt(asset, seekTime, markerEl) {
+  stopAuditionInternal();
+  auditionAudio = new Audio(URL.createObjectURL(asset.blob));
+  auditionAudio.currentTime = Math.max(0, seekTime);
+  auditionAsset = asset;
+  auditionAudio.play();
+  markerEl.style.display = 'block';
+  const dur = asset.buffer.duration;
+  function tick() {
+    if (!auditionAudio) return;
+    const frac = dur > 0 ? auditionAudio.currentTime / dur : 0;
+    markerEl.style.left = (frac*100) + '%';
+    auditionRafId = requestAnimationFrame(tick);
+  }
+  tick();
+  auditionAudio.onended = () => stopAudition();
+}
+function startAssetDrag(e, asset) {
+  assetDragState = { asset, startX:e.clientX, startY:e.clientY, moved:false, ghostEl:null };
+}
+window.addEventListener('pointermove', (e) => {
+  if (!assetDragState) return;
+  const dx = e.clientX-assetDragState.startX, dy = e.clientY-assetDragState.startY;
+  if (!assetDragState.moved && Math.hypot(dx,dy) > MOVE_THRESHOLD) {
+    assetDragState.moved = true;
+    const ghost = document.createElement('div');
+    ghost.textContent = '♪ ' + assetDragState.asset.name;
+    ghost.style.cssText = 'position:fixed; pointer-events:none; z-index:100; background:var(--teal); color:var(--teal-light); padding:6px 12px; border-radius:6px; font-size:12px; opacity:0.92; box-shadow:0 4px 10px rgba(0,0,0,.5); white-space:nowrap;';
+    document.body.appendChild(ghost);
+    assetDragState.ghostEl = ghost;
+  }
+  if (assetDragState.moved && assetDragState.ghostEl) {
+    assetDragState.ghostEl.style.left = (e.clientX+10)+'px';
+    assetDragState.ghostEl.style.top = (e.clientY+10)+'px';
+    let hoverTrackId = null;
+    laneEls.forEach((laneEl, tid) => {
+      const r = laneEl.getBoundingClientRect();
+      if (e.clientY >= r.top && e.clientY <= r.bottom) hoverTrackId = tid;
+    });
+    laneEls.forEach((laneEl, tid) => { laneEl.style.outline = (tid === hoverTrackId) ? '2px solid var(--amber)' : 'none'; });
+  }
+});
+window.addEventListener('pointerup', (e) => {
+  if (!assetDragState) return;
+  if (assetDragState.moved) {
+    let targetTrackId = null;
+    laneEls.forEach((laneEl, tid) => {
+      const r = laneEl.getBoundingClientRect();
+      if (e.clientY >= r.top && e.clientY <= r.bottom && e.clientX >= r.left && e.clientX <= r.right) targetTrackId = tid;
+      laneEl.style.outline = 'none';
+    });
+    if (targetTrackId) addAssetClipToTrack(targetTrackId, assetDragState.asset, xToSec(e.clientX));
+  }
+  if (assetDragState.ghostEl) assetDragState.ghostEl.remove();
+  assetDragState = null;
+});
+function addAssetClipToTrack(trackId, asset, posSec) {
+  const t = tracks.find(t=>t.id===trackId);
+  if (!t) return;
+  pushUndoSnapshot();
+  const dur = asset.buffer.duration;
+  const newStart = Math.max(0, posSec), newEnd = newStart+dur;
+  const { toRemove, toAdd } = resolveOverlaps(t.clips, newStart, newEnd, null);
+  t.clips = t.clips.filter(c => !toRemove.includes(c.id));
+  t.clips.push(...toAdd);
+  t.clips.push({ id:genId(), assetId:asset.id, start:newStart, duration:dur, trimIn:0, trimOut:dur, fadeIn:0, fadeOut:0,
+    waveformUrl: makeWaveformUrl(asset.buffer, Math.max(dur*PPS,28), ROW_H_JS-16) });
+  saveProject();
+  renderAll();
 }
 function renderAssetList() {
   if (!assetList) return;
@@ -401,13 +504,45 @@ function renderAssetList() {
     const isUsed = used.has(a.id);
     const row = document.createElement('div');
     row.className = 'asset-row' + (isUsed ? '' : ' unused');
+
+    const topLine = document.createElement('div');
+    topLine.style.cssText = 'display:flex; align-items:center; gap:8px;';
     const name = document.createElement('span');
     name.className = 'aname';
     name.textContent = a.name + (isUsed ? '' : '  (unused)');
     const size = document.createElement('span');
     size.className = 'asize';
     size.textContent = formatBytes(a.size);
-    row.appendChild(name); row.appendChild(size);
+    topLine.appendChild(name); topLine.appendChild(size);
+    topLine.addEventListener('pointerdown', (e) => startAssetDrag(e, a));
+    topLine.addEventListener('click', () => {
+      if (assetDragState) return;
+      if (expandedAssetId === a.id) { expandedAssetId = null; stopAuditionInternal(); }
+      else { expandedAssetId = a.id; stopAuditionInternal(); }
+      renderAssetList();
+    });
+    row.appendChild(topLine);
+
+    if (expandedAssetId === a.id) {
+      const waveWrap = document.createElement('div');
+      waveWrap.style.cssText = 'position:relative; margin-top:6px; height:70px; border-radius:6px; overflow:hidden; background:#141210;';
+      const widthPx = assetList.clientWidth - 24;
+      waveWrap.style.backgroundImage = 'url(' + getAssetWaveformUrl(a, widthPx) + ')';
+      waveWrap.style.backgroundSize = '100% 100%';
+      waveWrap.style.backgroundRepeat = 'no-repeat';
+      const marker = document.createElement('div');
+      marker.style.cssText = 'position:absolute; top:0; bottom:0; width:2px; background:var(--amber); left:0; display:none; pointer-events:none;';
+      waveWrap.appendChild(marker);
+      waveWrap.addEventListener('pointerdown', (e) => e.stopPropagation());
+      waveWrap.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const rect = waveWrap.getBoundingClientRect();
+        const frac = Math.max(0, Math.min(1, (e.clientX-rect.left)/rect.width));
+        if (auditionAsset === a) stopAudition();
+        else startAuditionAt(a, frac*a.buffer.duration, marker);
+      });
+      row.appendChild(waveWrap);
+    }
     assetList.appendChild(row);
   });
 }
@@ -1038,11 +1173,13 @@ async function startRecording() {
   elapsedInterval = setInterval(() => {
     elapsed = (Date.now()-recordStartTime)/1000;
     timerEl.textContent = fmt(elapsed);
+    playheadPos = takeStartPos + elapsed;
     const neededTicks = Math.ceil(totalDurationNow());
     if (neededTicks > lastRenderedTickCount || !liveBlockEl) {
       renderLanes();
     } else {
       liveBlockEl.style.width = Math.max(elapsed*PPS, 4)+'px';
+      renderPlayheadPosition();
     }
   }, 50);
 }
