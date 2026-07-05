@@ -102,7 +102,7 @@
     <div class="notice" id="notice"></div>
 
     <div class="transport" style="flex-wrap:wrap;">
-      <span class="tape-title">Tape <span id="versionTag">v9.1</span></span>
+      <span class="tape-title">Tape <span id="versionTag">v9.2</span></span>
       <button id="toStartBtn" class="tbtn" style="font-size:16px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back to start">|◀</button>
       <button id="skipBackBtn" class="tbtn" style="font-size:12px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back 10 seconds">-10s</button>
       <button id="recordBtn" class="tbtn" aria-label="Record">●</button>
@@ -117,26 +117,14 @@
     </div>
 
     <div class="section-row">
-      <span class="section-label">Project</span>
-      <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        <select id="projectSelect" style="background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:8px; font-size:14px; padding:8px 10px; max-width:140px;"></select>
-        <button id="newProjectBtn" style="font-size:14px; padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--amber);">+ New</button>
-        <button id="renameProjectBtn" style="font-size:14px; padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text);">Rename</button>
-        <button id="deleteProjectBtn" style="font-size:14px; padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--red);">Delete</button>
-        <button id="exportProjectBtn" style="font-size:14px; padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--teal-light);">⬇ Export</button>
-        <button id="importProjectBtn" style="font-size:14px; padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--teal-light);">⬆ Import</button>
-        <input type="file" id="importFileInput" accept="application/json,.json" style="display:none;">
-      </div>
-    </div>
-
-    <div class="section-row">
-      <span class="section-label">Tracks</span>
+      <button id="projectMenuBtn" style="font-size:14px; padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--amber);">Project ▾</button>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <button id="followBtn" style="font-size:13px; padding:8px 14px; border-radius:8px; border:1px solid var(--amber); background:var(--amber); color:#1c1a17; text-transform:uppercase; letter-spacing:.03em;">Follow</button>
         <button id="zoomOutBtn" style="font-size:16px; padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text);">−</button>
         <button id="zoomInBtn" style="font-size:16px; padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text);">+</button>
         <button id="addTrackBtn" style="font-size:14px; padding:8px 14px;">+ Add track</button>
       </div>
+      <input type="file" id="importFileInput" accept="application/json,.json" style="display:none;">
     </div>
 
     <div class="mixer-ruler-row">
@@ -370,23 +358,7 @@ purgeAssetsBtn.addEventListener('click', () => {
   saveProject();
   renderAssetList();
 });
-const projectSelect = document.getElementById('projectSelect');
-const newProjectBtn = document.getElementById('newProjectBtn');
-const renameProjectBtn = document.getElementById('renameProjectBtn');
-const deleteProjectBtn = document.getElementById('deleteProjectBtn');
-projectSelect.addEventListener('change', (e) => { switchProject(e.target.value); });
-newProjectBtn.addEventListener('click', () => { createProject(); });
-renameProjectBtn.addEventListener('click', () => {
-  const p = projectList.find(p=>p.id===activeProjectId);
-  const name = prompt('Project name', p ? p.name : '');
-  if (name && name.trim()) renameProject(activeProjectId, name.trim());
-});
-deleteProjectBtn.addEventListener('click', () => {
-  if (!confirm('Delete this project? This cannot be undone.')) return;
-  deleteProject(activeProjectId);
-});
-const exportProjectBtn = document.getElementById('exportProjectBtn');
-const importProjectBtn = document.getElementById('importProjectBtn');
+const projectMenuBtn = document.getElementById('projectMenuBtn');
 const importFileInput = document.getElementById('importFileInput');
 function blobToDataUrl(blob) {
   return new Promise((resolve,reject) => {
@@ -399,8 +371,7 @@ function blobToDataUrl(blob) {
 async function exportProject() {
   await flushSaveNow();
   const p = projectList.find(p=>p.id===activeProjectId);
-  exportProjectBtn.disabled = true;
-  exportProjectBtn.textContent = '⬇ Working…';
+  projectMenuBtn.disabled = true;
   try {
     const usedAssetIds = new Set();
     tracks.forEach(t => t.clips.forEach(c => usedAssetIds.add(c.assetId)));
@@ -424,13 +395,11 @@ async function exportProject() {
   } catch (e) {
     showNotice('Export failed: ' + e.message);
   } finally {
-    exportProjectBtn.disabled = false;
-    exportProjectBtn.textContent = '⬇ Export';
+    projectMenuBtn.disabled = false;
   }
 }
 async function importProjectFile(file) {
-  importProjectBtn.disabled = true;
-  importProjectBtn.textContent = '⬆ Working…';
+  projectMenuBtn.disabled = true;
   try {
     const text = await file.text();
     const data = JSON.parse(text);
@@ -489,17 +458,34 @@ async function importProjectFile(file) {
     await saveMetaNow();
     await flushSaveNow();
     renderAll();
-    renderProjectSelector();
     renderAssetList();
   } catch (e) {
     showNotice('Import failed: ' + e.message);
   } finally {
-    importProjectBtn.disabled = false;
-    importProjectBtn.textContent = '⬆ Import';
+    projectMenuBtn.disabled = false;
   }
 }
-exportProjectBtn.addEventListener('click', () => { exportProject(); });
-importProjectBtn.addEventListener('click', () => { importFileInput.click(); });
+function showProjectMenu() {
+  const rect = projectMenuBtn.getBoundingClientRect();
+  const items = projectList.map(p => ({
+    label: (p.id === activeProjectId ? '● ' : '') + p.name,
+    action: () => switchProject(p.id)
+  }));
+  items.push({ label: '+ New Project', action: () => createProject() });
+  items.push({ label: 'Rename', action: () => {
+    const p = projectList.find(p=>p.id===activeProjectId);
+    const name = prompt('Project name', p ? p.name : '');
+    if (name && name.trim()) renameProject(activeProjectId, name.trim());
+  }});
+  items.push({ label: '⬇ Export', action: () => exportProject() });
+  items.push({ label: '⬆ Import', action: () => importFileInput.click() });
+  items.push({ label: 'Delete project', danger:true, action: () => {
+    if (!confirm('Delete this project? This cannot be undone.')) return;
+    deleteProject(activeProjectId);
+  }});
+  showContextMenu(rect.left, rect.bottom + 6, items, 'below');
+}
+projectMenuBtn.addEventListener('click', showProjectMenu);
 importFileInput.addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (file) importProjectFile(file);
@@ -969,20 +955,21 @@ function closeContextMenu() {
   if (contextMenuEl) { contextMenuEl.remove(); contextMenuEl = null; }
   if (contextMenuOverlay) { contextMenuOverlay.remove(); contextMenuOverlay = null; }
 }
-function showContextMenu(x, y, items) {
+function showContextMenu(x, y, items, align) {
   closeContextMenu();
   contextMenuOverlay = document.createElement('div');
   contextMenuOverlay.style.cssText = 'position:fixed; inset:0; z-index:40;';
   contextMenuOverlay.addEventListener('pointerdown', closeContextMenu);
   document.body.appendChild(contextMenuOverlay);
   contextMenuEl = document.createElement('div');
-  contextMenuEl.style.cssText = 'position:fixed; left:'+x+'px; top:'+y+'px; transform:translate(-50%,-110%);'+
+  const transform = align === 'below' ? 'translate(0, 0)' : 'translate(-50%,-110%)';
+  contextMenuEl.style.cssText = 'position:fixed; left:'+x+'px; top:'+y+'px; transform:'+transform+'; max-height:70vh; overflow-y:auto;'+
     'background:#2a2721; border:1px solid #f4d03f; border-radius:8px; padding:6px; display:flex; flex-direction:column; gap:4px; z-index:41; box-shadow:0 4px 14px rgba(0,0,0,.6);';
   items.forEach(item => {
     const btn = document.createElement('button');
     btn.textContent = item.label;
     btn.style.cssText = 'background:'+(item.danger?'var(--red)':'var(--teal)')+'; color:'+(item.danger?'var(--text)':'var(--teal-light)')+
-      '; border:none; border-radius:5px; font-size:13px; padding:9px 18px; cursor:pointer; white-space:nowrap;';
+      '; border:none; border-radius:5px; font-size:13px; padding:9px 18px; cursor:pointer; white-space:nowrap; text-align:left;';
     btn.addEventListener('pointerdown', e=>e.stopPropagation());
     btn.addEventListener('click', (e) => { e.stopPropagation(); closeContextMenu(); item.action(); });
     contextMenuEl.appendChild(btn);
@@ -1148,11 +1135,12 @@ window.addEventListener('pointermove', (e) => {
   const t = tracks.find(t=>t.id===fadeDragState.trackId);
   const clip = t && t.clips.find(c=>c.id===fadeDragState.id);
   if (!clip) return;
-  const maxFade = clip.duration / 2;
   if (fadeDragState.edge === 'left') {
-    clip.fadeIn = Math.max(0, Math.min(maxFade, fadeDragState.origFadeIn + deltaSec));
+    const maxFadeIn = clip.duration - (clip.fadeOut||0);
+    clip.fadeIn = Math.max(0, Math.min(maxFadeIn, fadeDragState.origFadeIn + deltaSec));
   } else {
-    clip.fadeOut = Math.max(0, Math.min(maxFade, fadeDragState.origFadeOut - deltaSec));
+    const maxFadeOut = clip.duration - (clip.fadeIn||0);
+    clip.fadeOut = Math.max(0, Math.min(maxFadeOut, fadeDragState.origFadeOut - deltaSec));
   }
   renderLanes();
 });
@@ -1311,8 +1299,8 @@ function renderLanes() {
       block.appendChild(numLabel);
       const widthPx = Math.max(c.duration*PPS, 28);
       const rowInnerH = ROW_H_JS - 16;
-      const fadeInPx = Math.min((c.fadeIn||0)*PPS, widthPx/2);
-      const fadeOutPx = Math.min((c.fadeOut||0)*PPS, widthPx/2);
+      const fadeInPx = Math.min((c.fadeIn||0)*PPS, widthPx);
+      const fadeOutPx = Math.min((c.fadeOut||0)*PPS, widthPx);
       if (fadeInPx > 0 || fadeOutPx > 0) {
         const svgHtml = '<svg width="'+widthPx+'" height="'+rowInnerH+'" viewBox="0 0 '+widthPx+' '+rowInnerH+
           '" style="position:absolute;left:0;top:0;pointer-events:none;">'+
@@ -1526,7 +1514,6 @@ async function switchProject(id) {
   await applyProjectRecord(rec);
   if (tracks.length === 0) addTrack();
   await saveMetaNow();
-  renderProjectSelector();
 }
 async function createProject() {
   if (isRecording) stopRecording();
@@ -1540,7 +1527,6 @@ async function createProject() {
   activeProjectId = id;
   addTrack();
   await saveMetaNow();
-  renderProjectSelector();
   renderAssetList();
 }
 async function renameProject(id, newName) {
@@ -1548,7 +1534,6 @@ async function renameProject(id, newName) {
   if (!p) return;
   p.name = newName;
   await saveMetaNow();
-  renderProjectSelector();
 }
 async function deleteProject(id) {
   if (projectList.length <= 1) { showNotice("Can't delete the only project."); return; }
@@ -1560,16 +1545,6 @@ async function deleteProject(id) {
   } else {
     await saveMetaNow();
   }
-  renderProjectSelector();
-}
-function renderProjectSelector() {
-  projectSelect.innerHTML = '';
-  projectList.forEach(p => {
-    const opt = document.createElement('option');
-    opt.value = p.id; opt.textContent = p.name;
-    if (p.id === activeProjectId) opt.selected = true;
-    projectSelect.appendChild(opt);
-  });
 }
 async function initProjects() {
   if (!window.indexedDB) { addTrack(); renderAll(); return; }
@@ -1589,7 +1564,6 @@ async function initProjects() {
     const projRecord = await getKey(db, 'proj:'+activeProjectId) || { tracks: [], playheadPos: 0 };
     await applyProjectRecord(projRecord);
     if (tracks.length === 0) addTrack();
-    renderProjectSelector();
   } catch (e) {
     console.error('init failed', e);
     addTrack(); renderAll();
