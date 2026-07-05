@@ -85,7 +85,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v4.1</span></h1>
+  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v5</span></h1>
   <p class="sub">multi-track recorder — arm a track, record, mix</p>
   <div class="notice" id="notice"></div>
 
@@ -106,6 +106,16 @@
       </div>
     </div>
     <div id="savedTag">saved</div>
+  </div>
+
+  <div class="section-row">
+    <span class="section-label">Project</span>
+    <div style="display:flex; gap:6px;">
+      <select id="projectSelect" style="background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:6px; font-size:11px; padding:3px 6px; max-width:110px;"></select>
+      <button id="newProjectBtn" style="font-size:11px; padding:3px 8px; border-radius:6px; border:1px solid var(--border); background:var(--panel); color:var(--amber);">+ New</button>
+      <button id="renameProjectBtn" style="font-size:11px; padding:3px 8px; border-radius:6px; border:1px solid var(--border); background:var(--panel); color:var(--text);">Rename</button>
+      <button id="deleteProjectBtn" style="font-size:11px; padding:3px 8px; border-radius:6px; border:1px solid var(--border); background:var(--panel); color:var(--red);">Delete</button>
+    </div>
   </div>
 
   <div class="section-row">
@@ -216,6 +226,21 @@ gainSlider.addEventListener('input', (e) => {
 });
 const notice = document.getElementById('notice');
 const addTrackBtn = document.getElementById('addTrackBtn');
+const projectSelect = document.getElementById('projectSelect');
+const newProjectBtn = document.getElementById('newProjectBtn');
+const renameProjectBtn = document.getElementById('renameProjectBtn');
+const deleteProjectBtn = document.getElementById('deleteProjectBtn');
+projectSelect.addEventListener('change', (e) => { switchProject(e.target.value); });
+newProjectBtn.addEventListener('click', () => { createProject(); });
+renameProjectBtn.addEventListener('click', () => {
+  const p = projectList.find(p=>p.id===activeProjectId);
+  const name = prompt('Project name', p ? p.name : '');
+  if (name && name.trim()) renameProject(activeProjectId, name.trim());
+});
+deleteProjectBtn.addEventListener('click', () => {
+  if (!confirm('Delete this project? This cannot be undone.')) return;
+  deleteProject(activeProjectId);
+});
 const headersList = document.getElementById('headersList');
 const ruler = document.getElementById('ruler');
 const lanesContainer = document.getElementById('lanesContainer');
@@ -777,8 +802,10 @@ function renderHeaders() {
 function renderAll() { renderHeaders(); renderLanes(); }
 addTrackBtn.addEventListener('click', () => addTrack());
 
-/* ---------- Persistence ---------- */
+/* ---------- Persistence (multi-project) ---------- */
 const DB_NAME='tapeDB', DB_VERSION=2, STORE='project';
+let activeProjectId = null;
+let projectList = [];
 function openDB() {
   return new Promise((resolve,reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
@@ -787,59 +814,168 @@ function openDB() {
     req.onerror = () => reject(req.error);
   });
 }
-function txDone(tx) { return new Promise((res,rej) => { tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error); }); }
+function getKey(db, key) {
+  return new Promise((resolve,reject) => {
+    const tx = db.transaction(STORE,'readonly');
+    const req = tx.objectStore(STORE).get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+function putKey(db, key, val) {
+  return new Promise((resolve,reject) => {
+    const tx = db.transaction(STORE,'readwrite');
+    tx.objectStore(STORE).put(val, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+function deleteKeyFn(db, key) {
+  return new Promise((resolve,reject) => {
+    const tx = db.transaction(STORE,'readwrite');
+    tx.objectStore(STORE).delete(key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
 let saveTimer=null;
+async function doSaveNow() {
+  if (!window.indexedDB || !activeProjectId) return;
+  try {
+    const db = await openDB();
+    const serialTracks = await Promise.all(tracks.map(async t => ({
+      id:t.id, name:t.name, volume:t.volume, muted:t.muted, soloed:t.soloed, armed:t.armed,
+      clips: await Promise.all(t.clips.map(async c => ({
+        id:c.id, start:c.start, duration:c.duration, trimIn:c.trimIn, trimOut:c.trimOut,
+        mimeType:c.blob.type, data: await c.blob.arrayBuffer()
+      })))
+    })));
+    await putKey(db, 'proj:'+activeProjectId, { tracks: serialTracks, playheadPos });
+    savedTag.style.opacity='1';
+    setTimeout(()=> savedTag.style.opacity='0', 1200);
+  } catch (e) { console.error('save failed', e); }
+}
 function saveProject() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(async () => {
-    if (!window.indexedDB) return;
-    try {
-      const db = await openDB();
-      const serialTracks = await Promise.all(tracks.map(async t => ({
-        id:t.id, name:t.name, volume:t.volume, muted:t.muted, soloed:t.soloed, armed:t.armed,
-        clips: await Promise.all(t.clips.map(async c => ({
-          id:c.id, start:c.start, duration:c.duration, trimIn:c.trimIn, trimOut:c.trimOut,
-          mimeType:c.blob.type, data: await c.blob.arrayBuffer()
-        })))
-      })));
-      const tx = db.transaction(STORE,'readwrite');
-      tx.objectStore(STORE).put({ tracks: serialTracks, playheadPos }, 'current');
-      await txDone(tx);
-      savedTag.style.opacity='1';
-      setTimeout(()=> savedTag.style.opacity='0', 1200);
-    } catch (e) { console.error('save failed', e); }
-  }, 300);
+  saveTimer = setTimeout(doSaveNow, 300);
 }
-async function loadProject() {
+async function flushSaveNow() {
+  clearTimeout(saveTimer);
+  await doSaveNow();
+}
+function teardownCurrentTracks() {
+  tracks.forEach(t => { try { t.gainNode.disconnect(); } catch(e){} });
+}
+async function applyProjectRecord(record) {
+  const ctx = ensureAudioCtx();
+  for (const st of (record.tracks||[])) {
+    const gainNode = ctx.createGain(); gainNode.connect(ctx.destination);
+    const track = { id:st.id, name:st.name, volume:st.volume, muted:st.muted, soloed:st.soloed, armed:st.armed, gainNode, clips:[] };
+    for (const sc of st.clips) {
+      const blob = new Blob([sc.data], { type: sc.mimeType });
+      const buffer = await ctx.decodeAudioData(sc.data.slice(0));
+      const trimIn = typeof sc.trimIn === 'number' ? sc.trimIn : 0;
+      const trimOut = typeof sc.trimOut === 'number' ? sc.trimOut : sc.duration;
+      const visible = sliceAudioBuffer(buffer, trimIn, trimOut);
+      track.clips.push({ id:sc.id, start:sc.start, duration:sc.duration, buffer, blob, trimIn, trimOut,
+        waveformUrl: makeWaveformUrl(visible, Math.max(sc.duration*PPS, 28), 78-16) });
+    }
+    tracks.push(track);
+  }
+  playheadPos = record.playheadPos || 0;
+  if (!tracks.some(t=>t.armed) && tracks.length) tracks[0].armed = true;
+  applyTrackGains();
+  renderAll();
+}
+async function saveMetaNow() {
+  if (!window.indexedDB) return;
+  const db = await openDB();
+  await putKey(db, 'meta', { activeId: activeProjectId, projects: projectList });
+}
+async function switchProject(id) {
+  if (id === activeProjectId) return;
+  if (isRecording) stopRecording();
+  if (playing) stopPlayback();
+  await flushSaveNow();
+  teardownCurrentTracks();
+  tracks = [];
+  selectedClipId = null; undoStack = []; redoStack = [];
+  activeProjectId = id;
+  const db = await openDB();
+  const rec = await getKey(db, 'proj:'+id) || { tracks: [], playheadPos: 0 };
+  await applyProjectRecord(rec);
+  if (tracks.length === 0) addTrack();
+  await saveMetaNow();
+  renderProjectSelector();
+}
+async function createProject() {
+  if (isRecording) stopRecording();
+  if (playing) stopPlayback();
+  await flushSaveNow();
+  teardownCurrentTracks();
+  const id = genId();
+  const name = 'Project ' + (projectList.length+1);
+  projectList.push({id, name});
+  tracks = []; selectedClipId=null; undoStack=[]; redoStack=[]; playheadPos=0;
+  activeProjectId = id;
+  addTrack();
+  await saveMetaNow();
+  renderProjectSelector();
+}
+async function renameProject(id, newName) {
+  const p = projectList.find(p=>p.id===id);
+  if (!p) return;
+  p.name = newName;
+  await saveMetaNow();
+  renderProjectSelector();
+}
+async function deleteProject(id) {
+  if (projectList.length <= 1) { showNotice("Can't delete the only project."); return; }
+  const db = await openDB();
+  await deleteKeyFn(db, 'proj:'+id);
+  projectList = projectList.filter(p=>p.id!==id);
+  if (activeProjectId === id) {
+    await switchProject(projectList[0].id);
+  } else {
+    await saveMetaNow();
+  }
+  renderProjectSelector();
+}
+function renderProjectSelector() {
+  projectSelect.innerHTML = '';
+  projectList.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.id; opt.textContent = p.name;
+    if (p.id === activeProjectId) opt.selected = true;
+    projectSelect.appendChild(opt);
+  });
+}
+async function initProjects() {
   if (!window.indexedDB) { addTrack(); renderAll(); return; }
   try {
     const db = await openDB();
-    const tx = db.transaction(STORE,'readonly');
-    const req = tx.objectStore(STORE).get('current');
-    const result = await new Promise((res,rej) => { req.onsuccess=()=>res(req.result); req.onerror=()=>rej(req.error); });
-    if (!result || !result.tracks || !result.tracks.length) { addTrack(); renderAll(); return; }
-    const ctx = ensureAudioCtx();
-    for (const st of result.tracks) {
-      const gainNode = ctx.createGain(); gainNode.connect(ctx.destination);
-      const track = { id:st.id, name:st.name, volume:st.volume, muted:st.muted, soloed:st.soloed, armed:st.armed, gainNode, clips:[] };
-      for (const sc of st.clips) {
-        const blob = new Blob([sc.data], { type: sc.mimeType });
-        const buffer = await ctx.decodeAudioData(sc.data.slice(0));
-        const trimIn = typeof sc.trimIn === 'number' ? sc.trimIn : 0;
-        const trimOut = typeof sc.trimOut === 'number' ? sc.trimOut : sc.duration;
-        const visible = sliceAudioBuffer(buffer, trimIn, trimOut);
-        track.clips.push({ id:sc.id, start:sc.start, duration:sc.duration, buffer, blob, trimIn, trimOut,
-          waveformUrl: makeWaveformUrl(visible, Math.max(sc.duration*PPS, 28), 78-16) });
-      }
-      tracks.push(track);
+    let meta = await getKey(db, 'meta');
+    if (!meta) {
+      const old = await getKey(db, 'current');
+      const id = genId();
+      const rec = (old && old.tracks && old.tracks.length) ? old : { tracks: [], playheadPos: 0 };
+      await putKey(db, 'proj:'+id, rec);
+      meta = { activeId: id, projects: [{id, name:'Project 1'}] };
+      await putKey(db, 'meta', meta);
     }
-    playheadPos = result.playheadPos || 0;
-    applyTrackGains();
-    renderAll();
-  } catch (e) { console.error('load failed', e); addTrack(); renderAll(); }
+    activeProjectId = meta.activeId;
+    projectList = meta.projects;
+    const projRecord = await getKey(db, 'proj:'+activeProjectId) || { tracks: [], playheadPos: 0 };
+    await applyProjectRecord(projRecord);
+    if (tracks.length === 0) addTrack();
+    renderProjectSelector();
+  } catch (e) {
+    console.error('init failed', e);
+    addTrack(); renderAll();
+  }
 }
 
-loadProject();
+initProjects();
 </script>
 </body>
 </html>
