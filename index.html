@@ -93,18 +93,18 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v7.1</span></h1>
+  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v7.2</span></h1>
   <p class="sub">multi-track recorder — arm a track, record, mix</p>
   <div class="notice" id="notice"></div>
 
   <div class="transport" style="flex-wrap:wrap;">
-    <button id="toStartBtn" class="tbtn" style="width:36px;height:36px;font-size:14px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back to start">|◀</button>
-    <button id="skipBackBtn" class="tbtn" style="width:36px;height:36px;font-size:11px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back 10 seconds">-10s</button>
+    <button id="toStartBtn" class="tbtn" style="font-size:16px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back to start">|◀</button>
+    <button id="skipBackBtn" class="tbtn" style="font-size:12px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back 10 seconds">-10s</button>
     <button id="recordBtn" class="tbtn" aria-label="Record">●</button>
     <button id="playBtn" class="tbtn" aria-label="Play">▶</button>
-    <button id="skipFwdBtn" class="tbtn" style="width:36px;height:36px;font-size:11px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Forward 10 seconds">+10s</button>
-    <button id="undoBtn" class="tbtn" style="width:38px;height:38px;font-size:16px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Undo" disabled>↶</button>
-    <button id="redoBtn" class="tbtn" style="width:38px;height:38px;font-size:16px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Redo" disabled>↷</button>
+    <button id="skipFwdBtn" class="tbtn" style="font-size:12px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Forward 10 seconds">+10s</button>
+    <button id="undoBtn" class="tbtn" style="font-size:18px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Undo" disabled>↶</button>
+    <button id="redoBtn" class="tbtn" style="font-size:18px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Redo" disabled>↷</button>
     <div class="transport-info">
       <div id="timer">00:00.0</div>
       <div class="meter-track"><div id="meterFill"></div></div>
@@ -121,24 +121,24 @@
 
   <div class="section-row">
     <span class="section-label">Project</span>
-    <div style="display:flex; gap:6px;">
-      <select id="projectSelect" style="background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:6px; font-size:11px; padding:3px 6px; max-width:110px;"></select>
-      <button id="newProjectBtn" style="font-size:11px; padding:3px 8px; border-radius:6px; border:1px solid var(--border); background:var(--panel); color:var(--amber);">+ New</button>
-      <button id="renameProjectBtn" style="font-size:11px; padding:3px 8px; border-radius:6px; border:1px solid var(--border); background:var(--panel); color:var(--text);">Rename</button>
-      <button id="deleteProjectBtn" style="font-size:11px; padding:3px 8px; border-radius:6px; border:1px solid var(--border); background:var(--panel); color:var(--red);">Delete</button>
-      <button id="exportProjectBtn" style="font-size:11px; padding:3px 8px; border-radius:6px; border:1px solid var(--border); background:var(--panel); color:var(--teal-light);">⬇ Export</button>
-      <button id="importProjectBtn" style="font-size:11px; padding:3px 8px; border-radius:6px; border:1px solid var(--border); background:var(--panel); color:var(--teal-light);">⬆ Import</button>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <select id="projectSelect" style="background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:8px; font-size:14px; padding:8px 10px; max-width:140px;"></select>
+      <button id="newProjectBtn" style="font-size:14px; padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--amber);">+ New</button>
+      <button id="renameProjectBtn" style="font-size:14px; padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text);">Rename</button>
+      <button id="deleteProjectBtn" style="font-size:14px; padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--red);">Delete</button>
+      <button id="exportProjectBtn" style="font-size:14px; padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--teal-light);">⬇ Export</button>
+      <button id="importProjectBtn" style="font-size:14px; padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--teal-light);">⬆ Import</button>
       <input type="file" id="importFileInput" accept="application/json,.json" style="display:none;">
     </div>
   </div>
 
   <div class="section-row">
     <span class="section-label">Tracks</span>
-    <div style="display:flex; gap:6px;">
-      <button id="followBtn" style="font-size:10px; padding:3px 9px; border-radius:6px; border:1px solid var(--amber); background:var(--amber); color:#1c1a17; text-transform:uppercase; letter-spacing:.03em;">Follow</button>
-      <button id="zoomOutBtn" style="font-size:13px; padding:3px 10px; border-radius:6px; border:1px solid var(--border); background:var(--panel); color:var(--text);">−</button>
-      <button id="zoomInBtn" style="font-size:13px; padding:3px 10px; border-radius:6px; border:1px solid var(--border); background:var(--panel); color:var(--text);">+</button>
-      <button id="addTrackBtn">+ Add track</button>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button id="followBtn" style="font-size:13px; padding:8px 14px; border-radius:8px; border:1px solid var(--amber); background:var(--amber); color:#1c1a17; text-transform:uppercase; letter-spacing:.03em;">Follow</button>
+      <button id="zoomOutBtn" style="font-size:16px; padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text);">−</button>
+      <button id="zoomInBtn" style="font-size:16px; padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text);">+</button>
+      <button id="addTrackBtn" style="font-size:14px; padding:8px 14px;">+ Add track</button>
     </div>
   </div>
 
@@ -202,11 +202,19 @@ function pushUndoSnapshot() {
 }
 function applySnapshot(snap) {
   const snapIds = new Set(snap.map(s=>s.id));
-  const currentIds = new Set(tracks.map(t=>t.id));
+  const currentById = new Map(tracks.map(t=>[t.id,t]));
   tracks.forEach(t => { if (!snapIds.has(t.id)) { try { t.gainNode.disconnect(); } catch(e){} } });
-  snap.forEach(s => { if (!currentIds.has(s.id)) { try { s.gainNode.connect(audioCtx.destination); } catch(e){} } });
-  tracks = snap.map(s => ({ id:s.id, name:s.name, volume:s.volume, muted:s.muted, soloed:s.soloed, armed:s.armed,
-    gainNode:s.gainNode, clips: s.clips.map(c => ({...c})) }));
+  snap.forEach(s => { if (!currentById.has(s.id)) { try { s.gainNode.connect(audioCtx.destination); } catch(e){} } });
+  tracks = snap.map(s => {
+    const existing = currentById.get(s.id);
+    return {
+      id:s.id, name:s.name,
+      volume: existing ? existing.volume : s.volume,
+      muted: existing ? existing.muted : s.muted,
+      soloed: existing ? existing.soloed : s.soloed,
+      armed: s.armed, gainNode:s.gainNode, clips: s.clips.map(c => ({...c}))
+    };
+  });
   applyTrackGains();
   if (selectedClipId && !tracks.some(t => t.clips.some(c => c.id === selectedClipId))) selectedClipId = null;
 }
@@ -310,16 +318,7 @@ function setZoom(newPPS) {
 zoomInBtn.addEventListener('click', () => setZoom(PPS * 1.4));
 zoomOutBtn.addEventListener('click', () => setZoom(PPS / 1.4));
 
-let activePointers = new Map();
-let pinching = false;
-let pinchStartDist = 0, pinchStartPPS = 40, pinchMidScreenX = 0, pinchStartScrollLeft = 0;
-function pointerDist(p1, p2) { return Math.hypot(p2.x-p1.x, p2.y-p1.y); }
-function endPinchPointer(e) {
-  activePointers.delete(e.pointerId);
-  if (activePointers.size < 2) pinching = false;
-}
-window.addEventListener('pointerup', endPinchPointer);
-window.addEventListener('pointercancel', endPinchPointer);
+
 const assetList = document.getElementById('assetList');
 const purgeAssetsBtn = document.getElementById('purgeAssetsBtn');
 function usedAssetIdSet() {
@@ -578,33 +577,6 @@ const ruler = document.getElementById('ruler');
 const lanesContainer = document.getElementById('lanesContainer');
 const timelineInner = document.getElementById('timelineInner');
 const timelineOuter = document.getElementById('timelineOuter');
-timelineOuter.addEventListener('pointerdown', (e) => {
-  activePointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
-  if (activePointers.size === 2) {
-    pinching = true;
-    scrubbing = false; dragState = null; trimDragState = null;
-    const pts = Array.from(activePointers.values());
-    pinchStartDist = pointerDist(pts[0], pts[1]) || 1;
-    pinchStartPPS = PPS;
-    const rect = timelineOuter.getBoundingClientRect();
-    pinchMidScreenX = ((pts[0].x+pts[1].x)/2) - rect.left;
-    pinchStartScrollLeft = timelineOuter.scrollLeft;
-  }
-});
-window.addEventListener('pointermove', (e) => {
-  if (!activePointers.has(e.pointerId)) return;
-  activePointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
-  if (!pinching || activePointers.size !== 2) return;
-  const pts = Array.from(activePointers.values());
-  const dist = pointerDist(pts[0], pts[1]);
-  const ratio = dist / pinchStartDist;
-  const contentX = pinchStartScrollLeft + pinchMidScreenX;
-  const newPPS = Math.max(10, Math.min(200, pinchStartPPS * ratio));
-  PPS = newPPS;
-  relayoutClipsForZoom();
-  const newContentX = contentX * (newPPS/pinchStartPPS);
-  timelineOuter.scrollLeft = Math.max(0, newContentX - pinchMidScreenX);
-});
 const playheadEl = document.getElementById('playheadEl');
 
 function genId() { return 'x' + Date.now() + Math.random().toString(36).slice(2,8); }
@@ -964,7 +936,7 @@ function onScrubStart(e) {
   renderPlayheadPosition();
   e.preventDefault();
 }
-function onScrubMove(e) { if (!scrubbing || pinching) return; playheadPos = xToSec(e.clientX); renderPlayheadPosition(); }
+function onScrubMove(e) { if (!scrubbing) return; playheadPos = xToSec(e.clientX); renderPlayheadPosition(); }
 function onScrubEnd() {
   if (!scrubbing) return;
   scrubbing=false;
@@ -996,7 +968,7 @@ function startTrimDrag(e, trackId, clip, edge) {
   };
 }
 window.addEventListener('pointermove', (e) => {
-  if (!trimDragState || pinching) return;
+  if (!trimDragState) return;
   const dx = e.clientX - trimDragState.startX;
   const deltaSec = dx / PPS;
   const t = tracks.find(t=>t.id===trimDragState.trackId);
@@ -1039,7 +1011,7 @@ window.addEventListener('pointerup', () => {
   renderAll();
 });
 window.addEventListener('pointermove', (e) => {
-  if (!dragState || pinching) return;
+  if (!dragState) return;
   const dx = e.clientX - dragState.startX;
   if (Math.abs(dx) > 3 && !dragState.moved) { dragState.moved = true; if (!dragState.snapped) { dragState.snapped = true; pushUndoSnapshot(); } }
   const deltaSec = dx/PPS;
