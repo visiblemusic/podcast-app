@@ -22,8 +22,9 @@
   .sticky-header-block { position:sticky; top:0; z-index:30; background:var(--bg); padding-top:14px; }
   .transport { display:flex; align-items:center; gap:10px; background:var(--panel);
     border:1px solid var(--border); border-radius:12px; padding:6px 12px; margin-bottom:14px; }
-  .tape-title { font-size:13px; text-transform:uppercase; letter-spacing:.12em; color:var(--amber); white-space:nowrap; }
-  .tape-title span { color:var(--dim); font-size:10px; letter-spacing:0; text-transform:none; }
+  .tape-title-block { display:flex; flex-direction:column; align-items:flex-start; line-height:1.15; }
+  .tape-title { font-weight:700; font-size:14px; text-transform:uppercase; letter-spacing:.1em; color:var(--amber); white-space:nowrap; }
+  .tape-version { font-size:9px; color:var(--dim); }
   .tbtn { width:50px; height:50px; border-radius:50%; border:none; flex-shrink:0; cursor:pointer;
     display:flex; align-items:center; justify-content:center; font-size:18px; }
   #recordBtn { background:var(--red); color:var(--text); }
@@ -41,6 +42,7 @@
   #savedTag { font-size:10px; color:var(--dim); text-transform:uppercase; opacity:0; transition:opacity .3s; }
   .section-row { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px; }
   .section-label { font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; }
+  .v-divider { width:1px; height:24px; background:var(--border); flex-shrink:0; }
   #addTrackBtn { background:var(--panel); border:1px solid var(--border); color:var(--amber);
     font-size:11px; padding:4px 10px; border-radius:6px; cursor:pointer; text-transform:uppercase; letter-spacing:.05em; }
 
@@ -68,6 +70,11 @@
   #ruler { position:relative; height:26px; border-bottom:1px solid var(--border); cursor:pointer; box-sizing:border-box; }
   .tick { position:absolute; top:0; bottom:0; width:1px; background:#524c40; }
   .tick-label { position:absolute; top:2px; font-size:11px; color:var(--dim); }
+  #selectionOverlay { position:absolute; top:0; bottom:0; background:rgba(244,208,63,0.18);
+    border-left:1px solid rgba(244,208,63,0.7); border-right:1px solid rgba(244,208,63,0.7);
+    pointer-events:none; z-index:3; display:none; }
+  #selectionRulerMark { position:absolute; top:0; bottom:0; background:rgba(244,208,63,0.3); pointer-events:none; z-index:4; display:none; }
+  #timeSelectionBtn.active { border-color:var(--amber) !important; background:var(--amber) !important; color:#1c1a17 !important; }
   .track-lane { position:relative; height:var(--row-h); border-bottom:1px solid var(--border); box-sizing:border-box; cursor:pointer; }
   .track-lane:last-child { border-bottom:none; }
   .empty-hint { font-size:11px; color:#514c40; position:absolute; left:8px; top:50%; transform:translateY(-50%); }
@@ -102,7 +109,7 @@
     <div class="notice" id="notice"></div>
 
     <div class="transport" style="flex-wrap:wrap;">
-      <span class="tape-title">Tape <span id="versionTag">v9.2</span></span>
+      <div class="tape-title-block"><div class="tape-title">Tape</div><div class="tape-version" id="versionTag">v10</div></div>
       <button id="toStartBtn" class="tbtn" style="font-size:16px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back to start">|◀</button>
       <button id="skipBackBtn" class="tbtn" style="font-size:12px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back 10 seconds">-10s</button>
       <button id="recordBtn" class="tbtn" aria-label="Record">●</button>
@@ -118,10 +125,13 @@
 
     <div class="section-row">
       <button id="projectMenuBtn" style="font-size:14px; padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--amber);">Project ▾</button>
-      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
         <button id="followBtn" style="font-size:13px; padding:8px 14px; border-radius:8px; border:1px solid var(--amber); background:var(--amber); color:#1c1a17; text-transform:uppercase; letter-spacing:.03em;">Follow</button>
-        <button id="zoomOutBtn" style="font-size:16px; padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text);">−</button>
-        <button id="zoomInBtn" style="font-size:16px; padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text);">+</button>
+        <button id="timeSelectionBtn" style="font-size:12px; padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text); text-transform:uppercase; letter-spacing:.03em;">Time Selection</button>
+        <div class="v-divider"></div>
+        <button id="zoomOutBtn" style="padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text); display:flex; align-items:center;"><svg width="14" height="14" viewBox="0 0 24 24"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="2.5" fill="none"/><line x1="15" y1="15" x2="21" y2="21" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
+        <button id="zoomInBtn" style="padding:6px 12px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text); display:flex; align-items:center;"><svg width="24" height="24" viewBox="0 0 24 24"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="2.5" fill="none"/><line x1="15" y1="15" x2="21" y2="21" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
+        <div class="v-divider"></div>
         <button id="addTrackBtn" style="font-size:14px; padding:8px 14px;">+ Add track</button>
       </div>
       <input type="file" id="importFileInput" accept="application/json,.json" style="display:none;">
@@ -139,6 +149,7 @@
     </div>
     <div id="timelineOuter">
       <div id="timelineInner">
+        <div id="selectionOverlay"></div>
         <div id="lanesContainer"></div>
         <div class="playhead" id="playheadEl"><div class="line"></div><div class="handle"></div></div>
       </div>
@@ -286,12 +297,21 @@ const notice = document.getElementById('notice');
 const addTrackBtn = document.getElementById('addTrackBtn');
 const followBtn = document.getElementById('followBtn');
 let followPlayhead = true;
+let timeSelectionMode = false;
+let timeSelection = null; // {start, end} in seconds
+let selStartDrag = null;
 function updateFollowBtn() {
   followBtn.style.background = followPlayhead ? 'var(--amber)' : 'var(--panel)';
   followBtn.style.color = followPlayhead ? '#1c1a17' : 'var(--text)';
   followBtn.style.borderColor = followPlayhead ? 'var(--amber)' : 'var(--border)';
 }
 followBtn.addEventListener('click', () => { followPlayhead = !followPlayhead; updateFollowBtn(); });
+const timeSelectionBtn = document.getElementById('timeSelectionBtn');
+timeSelectionBtn.addEventListener('click', () => {
+  timeSelectionMode = !timeSelectionMode;
+  timeSelectionBtn.classList.toggle('active', timeSelectionMode);
+  if (!timeSelectionMode) { timeSelection = null; renderTimeSelectionOverlay(); }
+});
 const zoomInBtn = document.getElementById('zoomInBtn');
 const zoomOutBtn = document.getElementById('zoomOutBtn');
 function relayoutClipsForZoom() {
@@ -578,6 +598,25 @@ const ruler = document.getElementById('ruler');
 const playheadRulerMark = document.createElement('div');
 playheadRulerMark.style.cssText = 'position:absolute; top:0; bottom:0; width:2px; background:var(--amber); pointer-events:none; z-index:5;';
 ruler.appendChild(playheadRulerMark);
+const selectionRulerMark = document.createElement('div');
+selectionRulerMark.id = 'selectionRulerMark';
+ruler.appendChild(selectionRulerMark);
+const selectionOverlay = document.getElementById('selectionOverlay');
+function renderTimeSelectionOverlay() {
+  if (!timeSelection) {
+    selectionOverlay.style.display = 'none';
+    selectionRulerMark.style.display = 'none';
+    return;
+  }
+  const leftPx = timeSelection.start * PPS;
+  const widthPx = (timeSelection.end - timeSelection.start) * PPS;
+  selectionOverlay.style.display = 'block';
+  selectionOverlay.style.left = leftPx+'px';
+  selectionOverlay.style.width = widthPx+'px';
+  selectionRulerMark.style.display = 'block';
+  selectionRulerMark.style.left = leftPx+'px';
+  selectionRulerMark.style.width = widthPx+'px';
+}
 const lanesContainer = document.getElementById('lanesContainer');
 const timelineInner = document.getElementById('timelineInner');
 const timelineOuter = document.getElementById('timelineOuter');
@@ -1063,12 +1102,98 @@ function onScrubEnd() {
 function exitEditMode() {
   if (activeEditClipId) { activeEditClipId = null; activeEditType = null; renderLanes(); }
 }
-ruler.addEventListener('pointerdown', (e) => { closeContextMenu(); exitEditMode(); onScrubStart(e); });
+function onSelectionPointerDown(e) {
+  closeContextMenu();
+  const sec = xToSec(e.clientX);
+  selStartDrag = { startX:e.clientX, startSec:sec, moved:false };
+}
+window.addEventListener('pointermove', (e) => {
+  if (!selStartDrag) return;
+  const dx = e.clientX - selStartDrag.startX;
+  if (Math.abs(dx) > MOVE_THRESHOLD) selStartDrag.moved = true;
+  if (selStartDrag.moved) {
+    const curSec = xToSec(e.clientX);
+    timeSelection = { start: Math.min(selStartDrag.startSec, curSec), end: Math.max(selStartDrag.startSec, curSec) };
+    renderTimeSelectionOverlay();
+  }
+});
+window.addEventListener('pointerup', (e) => {
+  if (!selStartDrag) return;
+  const wasMoved = selStartDrag.moved;
+  const tapSec = selStartDrag.startSec;
+  selStartDrag = null;
+  if (!wasMoved) {
+    if (timeSelection && tapSec >= timeSelection.start && tapSec <= timeSelection.end) {
+      showSelectionMenu(e.clientX, e.clientY);
+    } else {
+      timeSelection = null;
+      renderTimeSelectionOverlay();
+    }
+  }
+});
+function showSelectionMenu(x, y) {
+  if (!timeSelection) return;
+  showContextMenu(x, y, [
+    { label:'Delete contents of selection', action: () => deleteSelectionContents(false) },
+    { label:'Delete time selection (ripple)', danger:true, action: () => deleteSelectionContents(true) }
+  ]);
+}
+function cutRangeFromClips(clips, cutStart, cutEnd) {
+  const result = [];
+  for (const c of clips) {
+    const cStart = c.start, cEnd = c.start + c.duration;
+    if (cEnd <= cutStart || cStart >= cutEnd) { result.push(c); continue; }
+    if (cutStart <= cStart && cutEnd >= cEnd) { continue; }
+    if (cutStart > cStart && cutEnd < cEnd) {
+      const left = makeTrimmedClip(c, 0, cutStart-cStart, cStart);
+      const right = makeTrimmedClip(c, cutEnd-cStart, c.duration, cutEnd);
+      if (left) result.push(left);
+      if (right) result.push(right);
+      continue;
+    }
+    if (cutStart <= cStart) {
+      const right = makeTrimmedClip(c, cutEnd-cStart, c.duration, cutEnd);
+      if (right) result.push(right);
+      continue;
+    }
+    const left = makeTrimmedClip(c, 0, cutStart-cStart, cStart);
+    if (left) result.push(left);
+  }
+  return result;
+}
+function deleteSelectionContents(ripple) {
+  if (!timeSelection) return;
+  const { start, end } = timeSelection;
+  const dur = end - start;
+  pushUndoSnapshot();
+  tracks.forEach(t => {
+    let newClips = cutRangeFromClips(t.clips, start, end);
+    if (ripple) {
+      newClips = newClips.map(c => c.start >= end ? { ...c, start: c.start - dur } : c);
+    }
+    t.clips = newClips;
+  });
+  if (ripple) {
+    if (playheadPos > end) playheadPos -= dur;
+    else if (playheadPos > start) playheadPos = start;
+  }
+  if (activeEditClipId && !tracks.some(t => t.clips.some(c => c.id === activeEditClipId))) {
+    activeEditClipId = null; activeEditType = null;
+  }
+  timeSelection = null;
+  saveProject();
+  renderAll();
+}
+ruler.addEventListener('pointerdown', (e) => {
+  if (timeSelectionMode) { onSelectionPointerDown(e); return; }
+  closeContextMenu(); exitEditMode(); onScrubStart(e);
+});
 window.addEventListener('pointermove', onScrubMove);
 window.addEventListener('pointerup', onScrubEnd);
 
 function onClipPointerDown(e, trackId, clip) {
   e.stopPropagation();
+  if (timeSelectionMode) { onSelectionPointerDown(e); return; }
   closeContextMenu();
   if (activeEditClipId && activeEditClipId !== clip.id) exitEditMode();
   clipPress = { trackId, clipId: clip.id, startX:e.clientX, startY:e.clientY, moved:false, longPressFired:false };
@@ -1079,6 +1204,7 @@ function onClipPointerDown(e, trackId, clip) {
   }, LONG_PRESS_MS);
 }
 function onEmptyLanePointerDown(e, trackId) {
+  if (timeSelectionMode) { onSelectionPointerDown(e); return; }
   closeContextMenu();
   exitEditMode();
   emptyPress = { trackId, startX:e.clientX, startY:e.clientY, moved:false, longPressFired:false };
@@ -1264,6 +1390,8 @@ function renderRuler() {
     }
   }
   ruler.appendChild(playheadRulerMark);
+  ruler.appendChild(selectionRulerMark);
+  renderTimeSelectionOverlay();
 }
 function renderLanes() {
   renderRuler();
