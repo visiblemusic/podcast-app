@@ -115,7 +115,7 @@
     <div class="notice" id="notice"></div>
 
     <div class="transport" style="flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch;">
-      <div class="tape-title-block"><div class="tape-title">Tape</div><div class="tape-version" id="versionTag">v12.1</div></div>
+      <div class="tape-title-block"><div class="tape-title">Tape</div><div class="tape-version" id="versionTag">v12.3</div></div>
       <div class="v-divider" style="height:36px;"></div>
       <button id="toStartBtn" class="tbtn" style="font-size:16px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back to start">|◀</button>
       <button id="skipBackBtn" class="tbtn" style="font-size:12px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back 10 seconds">-10s</button>
@@ -177,7 +177,7 @@
     <input type="file" id="deviceFileInput" accept="audio/*" multiple style="display:none;">
 
     <div class="section-row" style="margin-top:16px;">
-      <button id="projectFilesToggleBtn" style="height:44px; font-size:14px; padding:0 16px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--amber); text-transform:uppercase; letter-spacing:.03em;">Project Files</button>
+      <button id="projectFilesToggleBtn" style="height:44px; font-size:14px; padding:0 16px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--amber); text-transform:uppercase; letter-spacing:.03em;"><span id="projectFilesArrow" style="display:inline-block; margin-right:6px; font-size:10px;">▼</span>Project Files</button>
       <button id="purgeAssetsBtn" style="font-size:10px; padding:3px 8px; border-radius:6px; border:1px solid var(--red); background:transparent; color:var(--red);">Purge unused</button>
     </div>
     <div id="assetListWrap">
@@ -395,10 +395,13 @@ let auditionSelection = null; // {assetId, startSec, endSec}
 let showAddButton = false;
 let waveformDragState = null;
 let activeMarkerEl = null;
+let selectionOverlayEl = null, selectionLeftHandleEl = null, selectionRightHandleEl = null;
+const projectFilesArrow = document.getElementById('projectFilesArrow');
 let assetsPanelVisible = true;
 projectFilesToggleBtn.addEventListener('click', () => {
   assetsPanelVisible = !assetsPanelVisible;
   assetListWrap.style.display = assetsPanelVisible ? 'block' : 'none';
+  projectFilesArrow.textContent = assetsPanelVisible ? '▼' : '▶';
 });
 function usedAssetIdSet() {
   const s = new Set();
@@ -463,20 +466,23 @@ function addAuditionSelectionToTimeline() {
 window.addEventListener('pointermove', (e) => {
   if (!waveformDragState) return;
   const dx = e.clientX - waveformDragState.startX;
-  if (Math.abs(dx) > MOVE_THRESHOLD) {
+  if (!waveformDragState.moved && Math.abs(dx) > MOVE_THRESHOLD) {
     waveformDragState.moved = true;
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:absolute; top:0; bottom:0; pointer-events:none; z-index:2;'+
+      'background:rgba(244,208,63,0.25); border-left:1px solid rgba(244,208,63,0.8); border-right:1px solid rgba(244,208,63,0.8);';
+    waveformDragState.waveWrapEl.appendChild(overlay);
+    waveformDragState.liveOverlayEl = overlay;
+  }
+  if (waveformDragState.moved) {
     const x1raw = Math.min(waveformDragState.startX, e.clientX) - waveformDragState.rectLeft;
     const x2raw = Math.max(waveformDragState.startX, e.clientX) - waveformDragState.rectLeft;
     const x1 = Math.max(0, Math.min(waveformDragState.rectWidth, x1raw));
     const x2 = Math.max(0, Math.min(waveformDragState.rectWidth, x2raw));
-    const dur = waveformDragState.asset.buffer.duration;
-    auditionSelection = {
-      assetId: waveformDragState.asset.id,
-      startSec: (x1/waveformDragState.rectWidth)*dur,
-      endSec: (x2/waveformDragState.rectWidth)*dur
-    };
-    showAddButton = false;
-    renderAssetList();
+    waveformDragState.liveOverlayEl.style.left = x1+'px';
+    waveformDragState.liveOverlayEl.style.width = (x2-x1)+'px';
+    waveformDragState.pendingStartPx = x1;
+    waveformDragState.pendingEndPx = x2;
   }
 });
 window.addEventListener('pointerup', (e) => {
@@ -485,26 +491,72 @@ window.addEventListener('pointerup', (e) => {
   const asset = waveformDragState.asset;
   const rectLeft = waveformDragState.rectLeft, rectWidth = waveformDragState.rectWidth;
   const tapX = waveformDragState.startX - rectLeft;
-  waveformDragState = null;
-  if (!wasMoved) {
-    if (auditionSelection && auditionSelection.assetId === asset.id) {
-      const tapSec = (tapX/rectWidth) * asset.buffer.duration;
-      if (tapSec >= auditionSelection.startSec && tapSec <= auditionSelection.endSec) {
-        showAddButton = true;
-        renderAssetList();
-        return;
-      }
-    }
-    auditionSelection = null; showAddButton = false;
-    if (auditionAsset === asset) {
-      stopAudition();
-    } else {
-      const frac = Math.max(0, Math.min(1, tapX/rectWidth));
-      const seekSec = frac * asset.buffer.duration;
-      renderAssetList();
-      if (activeMarkerEl) startAuditionAt(asset, seekSec, activeMarkerEl);
-    }
+  if (wasMoved) {
+    const dur = asset.buffer.duration;
+    auditionSelection = {
+      assetId: asset.id,
+      startSec: (waveformDragState.pendingStartPx/rectWidth)*dur,
+      endSec: (waveformDragState.pendingEndPx/rectWidth)*dur
+    };
+    showAddButton = false;
+    if (waveformDragState.liveOverlayEl) waveformDragState.liveOverlayEl.remove();
+    waveformDragState = null;
+    renderAssetList();
+    return;
   }
+  waveformDragState = null;
+  if (auditionSelection && auditionSelection.assetId === asset.id) {
+    const tapSec = (tapX/rectWidth) * asset.buffer.duration;
+    if (tapSec >= auditionSelection.startSec && tapSec <= auditionSelection.endSec) {
+      showAddButton = true;
+      renderAssetList();
+      return;
+    }
+    // tap outside an existing selection: this tap only dismisses it, no audition yet
+    auditionSelection = null; showAddButton = false;
+    renderAssetList();
+    return;
+  }
+  // no selection active: a plain tap here does the normal audition seek/stop toggle
+  if (auditionAsset === asset) {
+    stopAudition();
+  } else {
+    const frac = Math.max(0, Math.min(1, tapX/rectWidth));
+    const seekSec = frac * asset.buffer.duration;
+    renderAssetList();
+    if (activeMarkerEl) startAuditionAt(asset, seekSec, activeMarkerEl);
+  }
+});
+let selectionHandleDragState = null;
+function startSelectionHandleDrag(e, asset, edge, rectWidth) {
+  e.stopPropagation();
+  selectionHandleDragState = { asset, edge, startX:e.clientX, rectWidth,
+    origStart: auditionSelection.startSec, origEnd: auditionSelection.endSec };
+}
+window.addEventListener('pointermove', (e) => {
+  if (!selectionHandleDragState) return;
+  const dx = e.clientX - selectionHandleDragState.startX;
+  const dur = selectionHandleDragState.asset.buffer.duration;
+  const deltaSec = (dx/selectionHandleDragState.rectWidth)*dur;
+  if (selectionHandleDragState.edge === 'left') {
+    auditionSelection.startSec = Math.max(0, Math.min(selectionHandleDragState.origStart+deltaSec, selectionHandleDragState.origEnd-MIN_CLIP_DUR));
+  } else {
+    auditionSelection.endSec = Math.max(selectionHandleDragState.origStart+MIN_CLIP_DUR, Math.min(selectionHandleDragState.origEnd+deltaSec, dur));
+  }
+  if (selectionOverlayEl) {
+    const w = selectionHandleDragState.rectWidth;
+    const leftPx = (auditionSelection.startSec/dur)*w, rightPx = (auditionSelection.endSec/dur)*w;
+    selectionOverlayEl.style.left = leftPx+'px';
+    selectionOverlayEl.style.width = (rightPx-leftPx)+'px';
+    if (selectionLeftHandleEl) selectionLeftHandleEl.style.left = leftPx+'px';
+    if (selectionRightHandleEl) selectionRightHandleEl.style.left = rightPx+'px';
+  }
+});
+window.addEventListener('pointerup', () => {
+  if (!selectionHandleDragState) return;
+  selectionHandleDragState = null;
+  showAddButton = false;
+  renderAssetList();
 });
 function renderAssetList() {
   if (!assetList) return;
@@ -553,27 +605,45 @@ function renderAssetList() {
 
       if (auditionSelection && auditionSelection.assetId === a.id) {
         const dur = a.buffer.duration;
-        const selLeftPct = (auditionSelection.startSec/dur)*100;
-        const selWidthPct = ((auditionSelection.endSec-auditionSelection.startSec)/dur)*100;
+        const leftPx = (auditionSelection.startSec/dur)*widthPx;
+        const rightPx = (auditionSelection.endSec/dur)*widthPx;
         const selOverlay = document.createElement('div');
-        selOverlay.style.cssText = 'position:absolute; top:0; bottom:0; left:'+selLeftPct+'%; width:'+selWidthPct+'%;'+
+        selOverlay.style.cssText = 'position:absolute; top:0; bottom:0; left:'+leftPx+'px; width:'+(rightPx-leftPx)+'px; z-index:1;'+
           'background:rgba(244,208,63,0.25); border-left:1px solid rgba(244,208,63,0.8); border-right:1px solid rgba(244,208,63,0.8); pointer-events:none;';
         waveWrap.appendChild(selOverlay);
+        selectionOverlayEl = selOverlay;
+
+        const leftHandle = document.createElement('div');
+        leftHandle.style.cssText = 'position:absolute; top:0; bottom:0; left:'+leftPx+'px; width:16px; margin-left:-8px;'+
+          'background:rgba(244,208,63,0.55); cursor:ew-resize; touch-action:none; z-index:3;';
+        leftHandle.addEventListener('pointerdown', (e) => startSelectionHandleDrag(e, a, 'left', widthPx));
+        waveWrap.appendChild(leftHandle);
+        selectionLeftHandleEl = leftHandle;
+
+        const rightHandle = document.createElement('div');
+        rightHandle.style.cssText = 'position:absolute; top:0; bottom:0; left:'+rightPx+'px; width:16px; margin-left:-8px;'+
+          'background:rgba(244,208,63,0.55); cursor:ew-resize; touch-action:none; z-index:3;';
+        rightHandle.addEventListener('pointerdown', (e) => startSelectionHandleDrag(e, a, 'right', widthPx));
+        waveWrap.appendChild(rightHandle);
+        selectionRightHandleEl = rightHandle;
+
         if (showAddButton) {
           const addBtn = document.createElement('button');
           addBtn.textContent = 'Add to Timeline';
-          addBtn.style.cssText = 'position:absolute; top:50%; left:'+selLeftPct+'%; transform:translate(0,-50%);'+
-            'background:var(--teal); color:var(--teal-light); border:none; border-radius:5px; font-size:11px; padding:6px 10px; cursor:pointer; white-space:nowrap; z-index:2;';
+          addBtn.style.cssText = 'position:absolute; top:50%; left:'+leftPx+'px; transform:translate(0,-50%);'+
+            'background:var(--teal); color:var(--teal-light); border:none; border-radius:5px; font-size:11px; padding:6px 10px; cursor:pointer; white-space:nowrap; z-index:4;';
           addBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
           addBtn.addEventListener('click', (e) => { e.stopPropagation(); addAuditionSelectionToTimeline(); });
           waveWrap.appendChild(addBtn);
         }
+      } else {
+        selectionOverlayEl = null; selectionLeftHandleEl = null; selectionRightHandleEl = null;
       }
 
       waveWrap.addEventListener('pointerdown', (e) => {
         e.stopPropagation();
         const rect = waveWrap.getBoundingClientRect();
-        waveformDragState = { asset:a, startX:e.clientX, rectLeft:rect.left, rectWidth:rect.width, moved:false };
+        waveformDragState = { asset:a, startX:e.clientX, rectLeft:rect.left, rectWidth:rect.width, moved:false, waveWrapEl:waveWrap };
       });
       row.appendChild(waveWrap);
     }
