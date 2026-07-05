@@ -115,7 +115,7 @@
     <div class="notice" id="notice"></div>
 
     <div class="transport" style="flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch;">
-      <div class="tape-title-block"><div class="tape-title">Tape</div><div class="tape-version" id="versionTag">v12</div></div>
+      <div class="tape-title-block"><div class="tape-title">Tape</div><div class="tape-version" id="versionTag">v12.1</div></div>
       <div class="v-divider" style="height:36px;"></div>
       <button id="toStartBtn" class="tbtn" style="font-size:16px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back to start">|◀</button>
       <button id="skipBackBtn" class="tbtn" style="font-size:12px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back 10 seconds">-10s</button>
@@ -177,11 +177,8 @@
     <input type="file" id="deviceFileInput" accept="audio/*" multiple style="display:none;">
 
     <div class="section-row" style="margin-top:16px;">
-      <span class="section-label">Project files</span>
-      <div style="display:flex; gap:8px;">
-        <button id="toggleAssetsBtn" style="font-size:10px; padding:3px 8px; border-radius:6px; border:1px solid var(--border); background:var(--panel); color:var(--text);">Hide</button>
-        <button id="purgeAssetsBtn" style="font-size:10px; padding:3px 8px; border-radius:6px; border:1px solid var(--red); background:transparent; color:var(--red);">Purge unused</button>
-      </div>
+      <button id="projectFilesToggleBtn" style="height:44px; font-size:14px; padding:0 16px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--amber); text-transform:uppercase; letter-spacing:.03em;">Project Files</button>
+      <button id="purgeAssetsBtn" style="font-size:10px; padding:3px 8px; border-radius:6px; border:1px solid var(--red); background:transparent; color:var(--red);">Purge unused</button>
     </div>
     <div id="assetListWrap">
       <div id="assetList" style="background:var(--panel); border:1px solid var(--border); border-radius:10px; max-height:320px; overflow-y:auto; padding:6px;"></div>
@@ -390,16 +387,18 @@ zoomOutBtn.addEventListener('click', () => setZoom(PPS / 1.4));
 
 const assetList = document.getElementById('assetList');
 const assetListWrap = document.getElementById('assetListWrap');
-const toggleAssetsBtn = document.getElementById('toggleAssetsBtn');
+const projectFilesToggleBtn = document.getElementById('projectFilesToggleBtn');
 const purgeAssetsBtn = document.getElementById('purgeAssetsBtn');
 let expandedAssetId = null;
 let auditionAsset = null, auditionAudio = null, auditionRafId = null;
-let assetDragState = null;
+let auditionSelection = null; // {assetId, startSec, endSec}
+let showAddButton = false;
+let waveformDragState = null;
+let activeMarkerEl = null;
 let assetsPanelVisible = true;
-toggleAssetsBtn.addEventListener('click', () => {
+projectFilesToggleBtn.addEventListener('click', () => {
   assetsPanelVisible = !assetsPanelVisible;
   assetListWrap.style.display = assetsPanelVisible ? 'block' : 'none';
-  toggleAssetsBtn.textContent = assetsPanelVisible ? 'Hide' : 'Show';
 });
 function usedAssetIdSet() {
   const s = new Set();
@@ -439,61 +438,78 @@ function startAuditionAt(asset, seekTime, markerEl) {
   tick();
   auditionAudio.onended = () => stopAudition();
 }
-function startAssetDrag(e, asset) {
-  assetDragState = { asset, startX:e.clientX, startY:e.clientY, moved:false, ghostEl:null };
+function addAuditionSelectionToTimeline() {
+  if (!auditionSelection) return;
+  const asset = getAsset(auditionSelection.assetId);
+  if (!asset) return;
+  const target = armedTrack();
+  if (!target) { showNotice('Add and arm a track first.'); return; }
+  const dur = auditionSelection.endSec - auditionSelection.startSec;
+  if (dur < MIN_CLIP_DUR) { showNotice('Selection is too short.'); return; }
+  pushUndoSnapshot();
+  const newStart = playheadPos, newEnd = newStart + dur;
+  const { toRemove, toAdd } = resolveOverlaps(target.clips, newStart, newEnd, null);
+  target.clips = target.clips.filter(c => !toRemove.includes(c.id));
+  target.clips.push(...toAdd);
+  const visible = sliceAudioBuffer(asset.buffer, auditionSelection.startSec, auditionSelection.endSec);
+  target.clips.push({ id:genId(), assetId:asset.id, start:newStart, duration:dur,
+    trimIn:auditionSelection.startSec, trimOut:auditionSelection.endSec, fadeIn:0, fadeOut:0,
+    waveformUrl: makeWaveformUrl(visible, Math.max(dur*PPS,28), ROW_H_JS-16) });
+  auditionSelection = null; showAddButton = false;
+  saveProject();
+  renderAll();
+  renderAssetList();
 }
 window.addEventListener('pointermove', (e) => {
-  if (!assetDragState) return;
-  const dx = e.clientX-assetDragState.startX, dy = e.clientY-assetDragState.startY;
-  if (!assetDragState.moved && Math.hypot(dx,dy) > MOVE_THRESHOLD) {
-    assetDragState.moved = true;
-    const ghost = document.createElement('div');
-    ghost.textContent = '♪ ' + assetDragState.asset.name;
-    ghost.style.cssText = 'position:fixed; pointer-events:none; z-index:100; background:var(--teal); color:var(--teal-light); padding:6px 12px; border-radius:6px; font-size:12px; opacity:0.92; box-shadow:0 4px 10px rgba(0,0,0,.5); white-space:nowrap;';
-    document.body.appendChild(ghost);
-    assetDragState.ghostEl = ghost;
-  }
-  if (assetDragState.moved && assetDragState.ghostEl) {
-    assetDragState.ghostEl.style.left = (e.clientX+10)+'px';
-    assetDragState.ghostEl.style.top = (e.clientY+10)+'px';
-    let hoverTrackId = null;
-    laneEls.forEach((laneEl, tid) => {
-      const r = laneEl.getBoundingClientRect();
-      if (e.clientY >= r.top && e.clientY <= r.bottom) hoverTrackId = tid;
-    });
-    laneEls.forEach((laneEl, tid) => { laneEl.style.outline = (tid === hoverTrackId) ? '2px solid var(--amber)' : 'none'; });
+  if (!waveformDragState) return;
+  const dx = e.clientX - waveformDragState.startX;
+  if (Math.abs(dx) > MOVE_THRESHOLD) {
+    waveformDragState.moved = true;
+    const x1raw = Math.min(waveformDragState.startX, e.clientX) - waveformDragState.rectLeft;
+    const x2raw = Math.max(waveformDragState.startX, e.clientX) - waveformDragState.rectLeft;
+    const x1 = Math.max(0, Math.min(waveformDragState.rectWidth, x1raw));
+    const x2 = Math.max(0, Math.min(waveformDragState.rectWidth, x2raw));
+    const dur = waveformDragState.asset.buffer.duration;
+    auditionSelection = {
+      assetId: waveformDragState.asset.id,
+      startSec: (x1/waveformDragState.rectWidth)*dur,
+      endSec: (x2/waveformDragState.rectWidth)*dur
+    };
+    showAddButton = false;
+    renderAssetList();
   }
 });
 window.addEventListener('pointerup', (e) => {
-  if (!assetDragState) return;
-  if (assetDragState.moved) {
-    let targetTrackId = null;
-    laneEls.forEach((laneEl, tid) => {
-      const r = laneEl.getBoundingClientRect();
-      if (e.clientY >= r.top && e.clientY <= r.bottom && e.clientX >= r.left && e.clientX <= r.right) targetTrackId = tid;
-      laneEl.style.outline = 'none';
-    });
-    if (targetTrackId) addAssetClipToTrack(targetTrackId, assetDragState.asset, xToSec(e.clientX));
+  if (!waveformDragState) return;
+  const wasMoved = waveformDragState.moved;
+  const asset = waveformDragState.asset;
+  const rectLeft = waveformDragState.rectLeft, rectWidth = waveformDragState.rectWidth;
+  const tapX = waveformDragState.startX - rectLeft;
+  waveformDragState = null;
+  if (!wasMoved) {
+    if (auditionSelection && auditionSelection.assetId === asset.id) {
+      const tapSec = (tapX/rectWidth) * asset.buffer.duration;
+      if (tapSec >= auditionSelection.startSec && tapSec <= auditionSelection.endSec) {
+        showAddButton = true;
+        renderAssetList();
+        return;
+      }
+    }
+    auditionSelection = null; showAddButton = false;
+    if (auditionAsset === asset) {
+      stopAudition();
+    } else {
+      const frac = Math.max(0, Math.min(1, tapX/rectWidth));
+      const seekSec = frac * asset.buffer.duration;
+      renderAssetList();
+      if (activeMarkerEl) startAuditionAt(asset, seekSec, activeMarkerEl);
+    }
   }
-  if (assetDragState.ghostEl) assetDragState.ghostEl.remove();
-  assetDragState = null;
 });
-function addAssetClipToTrack(trackId, asset, posSec) {
-  const t = tracks.find(t=>t.id===trackId);
-  if (!t) return;
-  pushUndoSnapshot();
-  const dur = asset.buffer.duration;
-  const newStart = Math.max(0, posSec), newEnd = newStart+dur;
-  const { toRemove, toAdd } = resolveOverlaps(t.clips, newStart, newEnd, null);
-  t.clips = t.clips.filter(c => !toRemove.includes(c.id));
-  t.clips.push(...toAdd);
-  t.clips.push({ id:genId(), assetId:asset.id, start:newStart, duration:dur, trimIn:0, trimOut:dur, fadeIn:0, fadeOut:0,
-    waveformUrl: makeWaveformUrl(asset.buffer, Math.max(dur*PPS,28), ROW_H_JS-16) });
-  saveProject();
-  renderAll();
-}
 function renderAssetList() {
   if (!assetList) return;
+  const savedInnerScroll = assetList.scrollTop;
+  const savedPageScrollX = window.scrollX, savedPageScrollY = window.scrollY;
   const used = usedAssetIdSet();
   assetList.innerHTML = '';
   if (projectAssets.length === 0) {
@@ -514,11 +530,10 @@ function renderAssetList() {
     size.className = 'asize';
     size.textContent = formatBytes(a.size);
     topLine.appendChild(name); topLine.appendChild(size);
-    topLine.addEventListener('pointerdown', (e) => startAssetDrag(e, a));
     topLine.addEventListener('click', () => {
-      if (assetDragState) return;
-      if (expandedAssetId === a.id) { expandedAssetId = null; stopAuditionInternal(); }
-      else { expandedAssetId = a.id; stopAuditionInternal(); }
+      stopAuditionInternal();
+      auditionSelection = null; showAddButton = false;
+      expandedAssetId = (expandedAssetId === a.id) ? null : a.id;
       renderAssetList();
     });
     row.appendChild(topLine);
@@ -530,21 +545,42 @@ function renderAssetList() {
       waveWrap.style.backgroundImage = 'url(' + getAssetWaveformUrl(a, widthPx) + ')';
       waveWrap.style.backgroundSize = '100% 100%';
       waveWrap.style.backgroundRepeat = 'no-repeat';
+
       const marker = document.createElement('div');
       marker.style.cssText = 'position:absolute; top:0; bottom:0; width:2px; background:var(--amber); left:0; display:none; pointer-events:none;';
+      activeMarkerEl = marker;
       waveWrap.appendChild(marker);
-      waveWrap.addEventListener('pointerdown', (e) => e.stopPropagation());
-      waveWrap.addEventListener('click', (e) => {
+
+      if (auditionSelection && auditionSelection.assetId === a.id) {
+        const dur = a.buffer.duration;
+        const selLeftPct = (auditionSelection.startSec/dur)*100;
+        const selWidthPct = ((auditionSelection.endSec-auditionSelection.startSec)/dur)*100;
+        const selOverlay = document.createElement('div');
+        selOverlay.style.cssText = 'position:absolute; top:0; bottom:0; left:'+selLeftPct+'%; width:'+selWidthPct+'%;'+
+          'background:rgba(244,208,63,0.25); border-left:1px solid rgba(244,208,63,0.8); border-right:1px solid rgba(244,208,63,0.8); pointer-events:none;';
+        waveWrap.appendChild(selOverlay);
+        if (showAddButton) {
+          const addBtn = document.createElement('button');
+          addBtn.textContent = 'Add to Timeline';
+          addBtn.style.cssText = 'position:absolute; top:50%; left:'+selLeftPct+'%; transform:translate(0,-50%);'+
+            'background:var(--teal); color:var(--teal-light); border:none; border-radius:5px; font-size:11px; padding:6px 10px; cursor:pointer; white-space:nowrap; z-index:2;';
+          addBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+          addBtn.addEventListener('click', (e) => { e.stopPropagation(); addAuditionSelectionToTimeline(); });
+          waveWrap.appendChild(addBtn);
+        }
+      }
+
+      waveWrap.addEventListener('pointerdown', (e) => {
         e.stopPropagation();
         const rect = waveWrap.getBoundingClientRect();
-        const frac = Math.max(0, Math.min(1, (e.clientX-rect.left)/rect.width));
-        if (auditionAsset === a) stopAudition();
-        else startAuditionAt(a, frac*a.buffer.duration, marker);
+        waveformDragState = { asset:a, startX:e.clientX, rectLeft:rect.left, rectWidth:rect.width, moved:false };
       });
       row.appendChild(waveWrap);
     }
     assetList.appendChild(row);
   });
+  assetList.scrollTop = savedInnerScroll;
+  window.scrollTo(savedPageScrollX, savedPageScrollY);
 }
 purgeAssetsBtn.addEventListener('click', () => {
   const used = usedAssetIdSet();
