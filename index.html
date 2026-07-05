@@ -94,7 +94,7 @@
     background:rgba(244,208,63,0.55); touch-action:none; z-index:6; }
   .trim-handle.left { left:0; border-radius:6px 0 0 6px; }
   .trim-handle.right { right:0; border-radius:0 6px 6px 0; }
-  .fade-handle { position:absolute; top:0; width:22px; height:22px; cursor:ew-resize; touch-action:none; z-index:6; }
+  .fade-handle { position:absolute; top:0; width:14px; height:14px; cursor:ew-resize; touch-action:none; z-index:6; }
   .fade-handle.left { left:0; background:linear-gradient(135deg, rgba(205,232,224,0.9) 50%, transparent 50%); }
   .fade-handle.right { right:0; background:linear-gradient(225deg, rgba(205,232,224,0.9) 50%, transparent 50%); }
   .live-block { position:absolute; top:8px; height:calc(var(--row-h) - 16px); border-radius:6px; background:var(--red-dim); border:1px solid var(--red); }
@@ -117,7 +117,7 @@
     <div class="notice" id="notice"></div>
 
     <div class="transport" style="flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch;">
-      <div class="tape-title-block"><div class="tape-title">Tape</div><div class="tape-version" id="versionTag">v12.5</div></div>
+      <div class="tape-title-block"><div class="tape-title">Tape</div><div class="tape-version" id="versionTag">v13</div></div>
       <div class="v-divider" style="height:36px;"></div>
       <button id="toStartBtn" class="tbtn" style="font-size:16px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back to start">|◀</button>
       <button id="skipBackBtn" class="tbtn" style="font-size:12px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back 10 seconds">-10s</button>
@@ -134,6 +134,13 @@
       <div id="savedTag">saved</div>
     </div>
     <hr class="section-divider">
+
+    <div id="masterRow" style="display:flex; align-items:center; gap:12px; padding:8px 14px; margin-bottom:14px;
+      background:linear-gradient(90deg, rgba(244,208,63,0.18), rgba(244,208,63,0.04)); border:1px solid var(--amber); border-radius:10px;">
+      <span style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--amber); flex-shrink:0;">Master</span>
+      <button id="masterMuteBtn" class="ms-btn" style="width:28px; height:26px; font-size:11px;">M</button>
+      <input type="range" id="masterVolSlider" min="0" max="1" step="0.01" value="1" style="flex:1; height:16px;">
+    </div>
 
     <div class="section-row">
       <button id="projectMenuBtn" style="height:44px; font-size:14px; padding:0 16px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--amber);">Project ▾</button>
@@ -171,17 +178,17 @@
   </div>
 
   <div style="margin-top:20px;">
-    <button id="browseFilesBtn" style="height:44px; font-size:11px; padding:0 10px; border-radius:6px; border:1px solid var(--border); background:var(--panel); color:var(--amber);">Browse sound files to add</button>
+    <div class="section-row">
+      <button id="projectFilesToggleBtn" style="height:44px; font-size:14px; padding:0 16px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--amber); text-transform:uppercase; letter-spacing:.03em;"><span id="projectFilesArrow" style="display:inline-block; margin-right:6px; font-size:10px;">▼</span>Project Files</button>
+      <button id="browseFilesBtn" style="height:44px; font-size:11px; padding:0 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--amber);">Browse sound files to add</button>
+    </div>
     <div id="pickerWrap" style="display:none; margin-top:8px;">
       <input type="text" id="fileFilterInput" placeholder="filter selected files…" style="width:100%; background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:6px; font-size:12px; padding:6px 8px; margin-bottom:6px;">
       <div id="pickerResults" style="background:var(--panel); border:1px solid var(--border); border-radius:10px; max-height:220px; overflow-y:auto; padding:6px;"></div>
     </div>
     <input type="file" id="deviceFileInput" accept="audio/*" multiple style="display:none;">
 
-    <div class="section-row" style="margin-top:16px;">
-      <button id="projectFilesToggleBtn" style="height:44px; font-size:14px; padding:0 16px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--amber); text-transform:uppercase; letter-spacing:.03em;"><span id="projectFilesArrow" style="display:inline-block; margin-right:6px; font-size:10px;">▼</span>Project Files</button>
-    </div>
-    <div id="assetListWrap">
+    <div id="assetListWrap" style="margin-top:16px;">
       <div id="assetList" style="background:var(--panel); border:1px solid var(--border); border-radius:10px; max-height:320px; overflow-y:auto; padding:6px;"></div>
       <div style="text-align:left; margin-top:8px;">
         <button id="purgeAssetsBtn" style="height:44px; font-size:12px; padding:0 14px; border-radius:8px; border:1px solid var(--red); background:var(--panel); color:var(--red);">Purge unused</button>
@@ -220,6 +227,7 @@ let tracks = []; // {id, name, volume, muted, soloed, armed, gainNode, clips:[{i
 let playheadPos = 0;
 let playing = false, activeSources = [], playRAF = null, playStartCtxTime = 0, playStartPlayhead = 0;
 let dragState = null;
+let multiDragState = null;
 let activeEditClipId = null; // clip currently showing draggable handles
 let touchSelectedClipId = null; // clip currently shown with a plain selection border
 let lassoMode = false;
@@ -240,17 +248,18 @@ function cloneTracksClips() {
   return tracks.map(t => ({ id:t.id, name:t.name, volume:t.volume, muted:t.muted, soloed:t.soloed, armed:t.armed,
     gainNode:t.gainNode, clips: t.clips.map(c => ({...c})) }));
 }
-function pushUndoSnapshot() {
-  undoStack.push(cloneTracksClips());
+function pushUndoSnapshot(extra) {
+  undoStack.push({ tracksSnap: cloneTracksClips(), timeSelection: (extra && extra.timeSelection) ? {...extra.timeSelection} : null });
   if (undoStack.length > 50) undoStack.shift();
   redoStack = [];
   updateUndoRedoButtons();
 }
-function applySnapshot(snap) {
+function applySnapshot(entry) {
+  const snap = entry.tracksSnap;
   const snapIds = new Set(snap.map(s=>s.id));
   const currentById = new Map(tracks.map(t=>[t.id,t]));
   tracks.forEach(t => { if (!snapIds.has(t.id)) { try { t.gainNode.disconnect(); } catch(e){} } });
-  snap.forEach(s => { if (!currentById.has(s.id)) { try { s.gainNode.connect(audioCtx.destination); } catch(e){} } });
+  snap.forEach(s => { if (!currentById.has(s.id)) { try { s.gainNode.connect(masterGainNode || audioCtx.destination); } catch(e){} } });
   tracks = snap.map(s => {
     const existing = currentById.get(s.id);
     return {
@@ -262,23 +271,24 @@ function applySnapshot(snap) {
     };
   });
   applyTrackGains();
+  if (entry.timeSelection) { timeSelection = {...entry.timeSelection}; renderTimeSelectionOverlay(); }
   if (activeEditClipId && !tracks.some(t => t.clips.some(c => c.id === activeEditClipId))) { activeEditClipId = null; activeEditType = null; }
   if (touchSelectedClipId && !tracks.some(t => t.clips.some(c => c.id === touchSelectedClipId))) touchSelectedClipId = null;
 }
 function undo() {
   if (!undoStack.length) return;
-  redoStack.push(cloneTracksClips());
-  const snap = undoStack.pop();
-  applySnapshot(snap);
+  redoStack.push({ tracksSnap: cloneTracksClips(), timeSelection: timeSelection ? {...timeSelection} : null });
+  const entry = undoStack.pop();
+  applySnapshot(entry);
   updateUndoRedoButtons();
   saveProject();
   renderAll();
 }
 function redo() {
   if (!redoStack.length) return;
-  undoStack.push(cloneTracksClips());
-  const snap = redoStack.pop();
-  applySnapshot(snap);
+  undoStack.push({ tracksSnap: cloneTracksClips(), timeSelection: timeSelection ? {...timeSelection} : null });
+  const entry = redoStack.pop();
+  applySnapshot(entry);
   updateUndoRedoButtons();
   saveProject();
   renderAll();
@@ -738,7 +748,7 @@ async function importProjectFile(file) {
       }
     }
     for (const st of data.tracks) {
-      const gainNode = ctx.createGain(); gainNode.connect(ctx.destination);
+      const gainNode = ctx.createGain(); gainNode.connect(ensureMasterGain());
       const track = { id: st.id || genId(), name: st.name || 'Track',
         volume: typeof st.volume==='number' ? st.volume : 1,
         muted: !!st.muted, soloed: !!st.soloed, armed: !!st.armed, gainNode, clips: [] };
@@ -1038,6 +1048,20 @@ function fmt(sec) {
 }
 function showNotice(msg) { notice.textContent = msg; notice.classList.add('show'); }
 function ensureAudioCtx() { if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)(); return audioCtx; }
+let masterGainNode = null;
+let masterVolume = 1, masterMuted = false;
+function ensureMasterGain() {
+  const ctx = ensureAudioCtx();
+  if (!masterGainNode) {
+    masterGainNode = ctx.createGain();
+    masterGainNode.connect(ctx.destination);
+    masterGainNode.gain.value = masterMuted ? 0 : masterVolume;
+  }
+  return masterGainNode;
+}
+function applyMasterGain() {
+  if (masterGainNode) masterGainNode.gain.value = masterMuted ? 0 : masterVolume;
+}
 
 if (!navigator.mediaDevices || !window.MediaRecorder) {
   showNotice("This browser doesn't support audio recording. Try Safari or Chrome over HTTPS.");
@@ -1050,7 +1074,7 @@ function addTrack(name) {
   const ctx = ensureAudioCtx();
   pushUndoSnapshot();
   const gainNode = ctx.createGain();
-  gainNode.connect(ctx.destination);
+  gainNode.connect(ensureMasterGain());
   const track = { id: genId(), name: name || ('Track ' + (tracks.length+1)), volume:1, muted:false, soloed:false, armed:false, gainNode, clips:[] };
   tracks.push(track);
   if (!tracks.some(t=>t.armed)) track.armed = true;
@@ -1608,7 +1632,7 @@ function deleteSelectionContents(ripple) {
   const { start, end } = timeSelection;
   const dur = end - start;
   const savedScrollLeft = timelineOuter.scrollLeft;
-  pushUndoSnapshot();
+  pushUndoSnapshot({ timeSelection: { start, end } });
   tracks.forEach(t => {
     let newClips = cutRangeFromClips(t.clips, start, end);
     if (ripple) {
@@ -1641,6 +1665,7 @@ window.addEventListener('pointerup', onScrubEnd);
 
 function onClipPointerDown(e, trackId, clip) {
   e.stopPropagation();
+  if (e.preventDefault) e.preventDefault();
   if (timeSelectionMode) { onSelectionPointerDown(e); return; }
   closeContextMenu();
   if (activeEditClipId && activeEditClipId !== clip.id) exitEditMode();
@@ -1660,16 +1685,33 @@ window.addEventListener('pointermove', (e) => {
     const dx = e.clientX-clipPress.startX, dy = e.clientY-clipPress.startY;
     if (Math.hypot(dx,dy) > MOVE_THRESHOLD) {
       clipPress.moved = true;
-      const isBeingEdited = activeEditClipId === clipPress.clipId && (activeEditType === 'trim' || activeEditType === 'fade');
-      if (!isBeingEdited) {
-        const t = tracks.find(t=>t.id===clipPress.trackId);
-        const clip = t && t.clips.find(c=>c.id===clipPress.clipId);
-        if (clip) {
-          pushUndoSnapshot();
-          dragState = { trackId:clipPress.trackId, id:clipPress.clipId, startX:clipPress.startX, origStart:clip.start, moved:true, snapped:true };
+      if (lassoSelectedIds.size > 0 && lassoSelectedIds.has(clipPress.clipId)) {
+        pushUndoSnapshot();
+        const refs = collectLassoClipRefs().map(r => ({ trackId:r.trackId, clipId:r.clip.id, origStart:r.clip.start }));
+        multiDragState = { startX: clipPress.startX, refs };
+      } else {
+        const isBeingEdited = activeEditClipId === clipPress.clipId && (activeEditType === 'trim' || activeEditType === 'fade');
+        if (!isBeingEdited) {
+          const t = tracks.find(t=>t.id===clipPress.trackId);
+          const clip = t && t.clips.find(c=>c.id===clipPress.clipId);
+          if (clip) {
+            pushUndoSnapshot();
+            dragState = { trackId:clipPress.trackId, id:clipPress.clipId, startX:clipPress.startX, origStart:clip.start, moved:true, snapped:true };
+          }
         }
       }
     }
+  }
+  if (multiDragState) {
+    const deltaSec = (e.clientX - multiDragState.startX) / PPS;
+    multiDragState.refs.forEach(ref => {
+      const t = tracks.find(t=>t.id===ref.trackId);
+      const c = t && t.clips.find(c=>c.id===ref.clipId);
+      if (!c) return;
+      c.start = Math.max(0, ref.origStart + deltaSec);
+      const el = clipBlockEls.get(c.id);
+      if (el) el.style.left = (c.start*PPS)+'px';
+    });
   }
   if (emptyPress && !emptyPress.moved) {
     const dx = e.clientX-emptyPress.startX, dy = e.clientY-emptyPress.startY;
@@ -1685,6 +1727,27 @@ window.addEventListener('pointermove', (e) => {
   if (lassoState) updateLassoRect(e.clientX, e.clientY);
 });
 window.addEventListener('pointerup', () => {
+  if (multiDragState) {
+    const byTrack = {};
+    multiDragState.refs.forEach(ref => {
+      (byTrack[ref.trackId] = byTrack[ref.trackId] || []).push(ref.clipId);
+    });
+    Object.keys(byTrack).forEach(trackId => {
+      const t = tracks.find(t=>t.id===trackId);
+      if (!t) return;
+      const movingIds = new Set(byTrack[trackId]);
+      let others = t.clips.filter(c => !movingIds.has(c.id));
+      const movedClips = t.clips.filter(c => movingIds.has(c.id));
+      movedClips.forEach(mc => {
+        const { toRemove, toAdd } = resolveOverlaps(others, mc.start, mc.start+mc.duration, null);
+        others = others.filter(c => !toRemove.includes(c.id)).concat(toAdd);
+      });
+      t.clips = others.concat(movedClips);
+    });
+    multiDragState = null;
+    saveProject();
+    renderAll();
+  }
   if (clipPress) {
     if (!clipPress.moved) {
       if (lassoSelectedIds.size > 0 && lassoSelectedIds.has(clipPress.clipId)) {
@@ -1972,6 +2035,19 @@ function renderHeaders() {
     armBtn.title = 'Arm for recording';
     armBtn.addEventListener('click', () => setArmed(t.id));
     const nameEl = document.createElement('div'); nameEl.className='th-name'; nameEl.textContent=t.name;
+    let nameHoldTimer = null;
+    nameEl.addEventListener('pointerdown', () => {
+      nameHoldTimer = setTimeout(() => {
+        const newName = prompt('Track name', t.name);
+        if (newName && newName.trim()) {
+          t.name = newName.trim();
+          renderAll();
+          saveProject();
+        }
+      }, LONG_PRESS_MS);
+    });
+    nameEl.addEventListener('pointerup', () => clearTimeout(nameHoldTimer));
+    nameEl.addEventListener('pointerleave', () => clearTimeout(nameHoldTimer));
     const delBtn = document.createElement('button');
     delBtn.className='ms-btn'; delBtn.textContent='✕'; delBtn.title='Delete track';
     delBtn.style.marginLeft='auto';
@@ -2076,7 +2152,7 @@ async function applyProjectRecord(record) {
     }
   }
   for (const st of (record.tracks||[])) {
-    const gainNode = ctx.createGain(); gainNode.connect(ctx.destination);
+    const gainNode = ctx.createGain(); gainNode.connect(ensureMasterGain());
     const track = { id:st.id, name:st.name, volume:st.volume, muted:st.muted, soloed:st.soloed, armed:st.armed, gainNode, clips:[] };
     for (const sc of st.clips) {
       let assetId, trimIn, trimOut;
@@ -2181,6 +2257,18 @@ async function initProjects() {
     addTrack(); renderAll();
   }
 }
+
+const masterMuteBtn = document.getElementById('masterMuteBtn');
+const masterVolSlider = document.getElementById('masterVolSlider');
+masterMuteBtn.addEventListener('click', () => {
+  masterMuted = !masterMuted;
+  masterMuteBtn.classList.toggle('mute-on', masterMuted);
+  applyMasterGain();
+});
+masterVolSlider.addEventListener('input', (e) => {
+  masterVolume = parseFloat(e.target.value);
+  applyMasterGain();
+});
 
 updateGainKnobVisual();
 initProjects();
