@@ -78,7 +78,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v3.5</span></h1>
+  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v3.6</span></h1>
   <p class="sub">multi-track recorder — arm a track, record, mix</p>
   <div class="notice" id="notice"></div>
 
@@ -90,8 +90,9 @@
       <div class="meter-track"><div id="meterFill"></div></div>
       <div id="status">ready</div>
       <div style="display:flex; align-items:center; gap:6px; margin-top:6px;">
-        <span style="font-size:9px; color:var(--dim); text-transform:uppercase;">Input gain</span>
-        <input type="range" id="gainSlider" min="1" max="8" step="0.1" value="3" style="flex:1; height:14px;">
+        <button id="monitorBtn" style="font-size:9px; color:var(--amber); background:transparent; border:1px solid var(--border); border-radius:4px; padding:2px 6px; cursor:pointer;">🎙 enable monitor</button>
+        <span style="font-size:9px; color:var(--dim); text-transform:uppercase;">Gain</span>
+        <input type="range" id="gainSlider" min="1" max="15" step="0.1" value="3" style="flex:1; height:14px;">
         <span id="gainReadout" style="font-size:9px; color:var(--dim); width:28px;">3.0x</span>
       </div>
     </div>
@@ -143,6 +144,17 @@ const statusEl = document.getElementById('status');
 const savedTag = document.getElementById('savedTag');
 const gainSlider = document.getElementById('gainSlider');
 const gainReadout = document.getElementById('gainReadout');
+const monitorBtn = document.getElementById('monitorBtn');
+monitorBtn.addEventListener('click', async () => {
+  monitorBtn.disabled = true;
+  try {
+    await ensureMicGraph();
+    monitorBtn.textContent = '🎙 monitoring';
+  } catch (err) {
+    showNotice("Microphone access was blocked or failed. Check the site's permission settings and that this page is loaded over HTTPS.");
+    monitorBtn.disabled = false;
+  }
+});
 gainSlider.addEventListener('input', (e) => {
   inputGainValue = parseFloat(e.target.value);
   gainReadout.textContent = inputGainValue.toFixed(1) + 'x';
@@ -274,8 +286,10 @@ function resolveOverlaps(trackClips, newStart, newEnd, excludeId) {
 let micStream = null;
 let inputGainValue = 3;
 let activeBoostGain = null;
+let micGraphReady = false;
+let meterRunning = false;
 function tickLevel() {
-  if (!analyser) return;
+  if (!analyser || !meterRunning) return;
   const data = new Uint8Array(analyser.frequencyBinCount);
   analyser.getByteTimeDomainData(data);
   let sum=0; for (let i=0;i<data.length;i++){ const v=(data[i]-128)/128; sum+=v*v; }
@@ -284,23 +298,28 @@ function tickLevel() {
 }
 function resetRecordingUI() {
   isRecording = false;
-  activeBoostGain = null;
   recordBtn.classList.remove('recording'); recordBtn.textContent = '●';
   playBtn.disabled = false;
   statusEl.textContent = 'ready';
   clearInterval(elapsedInterval);
   timerEl.textContent = '00:00.0'; elapsed = 0;
 }
-async function getMicStream() {
-  if (micStream && micStream.getTracks().some(t => t.readyState === 'live')) return micStream;
+async function ensureMicGraph() {
+  if (micGraphReady && micStream && micStream.getTracks().some(t => t.readyState === 'live')) return;
   micStream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      echoCancellation: false,
-      noiseSuppression: false,
-      autoGainControl: false
-    }
+    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
   });
-  return micStream;
+  stream = micStream;
+  const ctx = ensureAudioCtx();
+  if (ctx.state==='suspended') await ctx.resume();
+  const source = ctx.createMediaStreamSource(micStream);
+  activeBoostGain = ctx.createGain();
+  activeBoostGain.gain.value = inputGainValue;
+  source.connect(activeBoostGain);
+  analyser = ctx.createAnalyser(); analyser.fftSize = 512;
+  activeBoostGain.connect(analyser);
+  micGraphReady = true;
+  if (!meterRunning) { meterRunning = true; tickLevel(); }
 }
 let recordingStarting = false;
 async function startRecording() {
@@ -309,25 +328,15 @@ async function startRecording() {
   if (!target) { showNotice('Add and arm a track before recording.'); return; }
   recordingStarting = true;
   recordBtn.disabled = true;
-  let localStream;
-  try { localStream = await getMicStream(); }
+  try { await ensureMicGraph(); }
   catch (err) {
     showNotice("Microphone access was blocked or failed. Check the site's permission settings and that this page is loaded over HTTPS.");
     recordingStarting = false; recordBtn.disabled = false;
     return;
   }
   const ctx = ensureAudioCtx();
-  if (ctx.state==='suspended') await ctx.resume();
-  const source = ctx.createMediaStreamSource(localStream);
-  const boostGain = ctx.createGain();
-  boostGain.gain.value = inputGainValue;
-  source.connect(boostGain);
-  const localAnalyser = ctx.createAnalyser(); localAnalyser.fftSize=512;
-  boostGain.connect(localAnalyser);
-  analyser = localAnalyser;
-  tickLevel();
   const destNode = ctx.createMediaStreamDestination();
-  boostGain.connect(destNode);
+  activeBoostGain.connect(destNode);
 
   let mimeType='';
   if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType='audio/mp4';
@@ -335,8 +344,6 @@ async function startRecording() {
   const localRecorder = mimeType ? new MediaRecorder(destNode.stream,{mimeType}) : new MediaRecorder(destNode.stream);
   const localChunks = [];
   mediaRecorder = localRecorder;
-  stream = localStream;
-  activeBoostGain = boostGain;
   takeStartPos = playheadPos;
   let handledStop = false;
 
@@ -345,8 +352,8 @@ async function startRecording() {
     if (handledStop) return;
     handledStop = true;
     if (isRecording) resetRecordingUI();
+    try { activeBoostGain.disconnect(destNode); } catch(e){}
     const rawBlob = new Blob(localChunks, { type: localRecorder.mimeType || 'audio/webm' });
-    if (analyser === localAnalyser) { cancelAnimationFrame(meterRafId); meterFill.style.width='0%'; analyser=null; }
     try {
       const arrBuf = await rawBlob.arrayBuffer();
       const decoded = await ctx.decodeAudioData(arrBuf);
