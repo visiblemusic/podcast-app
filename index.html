@@ -66,7 +66,6 @@
   .clip-block { position:absolute; top:8px; height:calc(var(--row-h) - 16px); border-radius:6px; background:var(--teal);
     border:1px solid #3d5b58; color:var(--teal-light); display:flex; align-items:center; gap:4px;
     padding:0 6px; cursor:grab; font-size:10px; overflow:hidden; white-space:nowrap; touch-action:none; }
-  .clip-block.playing { background:var(--amber); border-color:var(--amber); color:#1c1a17; }
   .clip-block.dragging { opacity:.85; z-index:5; box-shadow:0 2px 8px rgba(0,0,0,.5); }
   .clip-del { position:absolute; top:1px; right:1px; width:16px; height:16px; border-radius:50%;
     background:rgba(0,0,0,.4); color:#fff; font-size:9px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
@@ -78,7 +77,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v3.6</span></h1>
+  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v3.7</span></h1>
   <p class="sub">multi-track recorder — arm a track, record, mix</p>
   <div class="notice" id="notice"></div>
 
@@ -132,7 +131,6 @@ let takeStartPos = 0;
 let tracks = []; // {id, name, volume, muted, soloed, armed, gainNode, clips:[{id,start,duration,buffer,blob}]}
 let playheadPos = 0;
 let playing = false, activeSources = [], playRAF = null, playStartCtxTime = 0, playStartPlayhead = 0;
-let previewAudio = null, previewId = null;
 let dragState = null;
 let scrubbing = false;
 
@@ -243,6 +241,40 @@ function audioBufferToWavBlob(buffer) {
   }
   return new Blob([bufOut], { type:'audio/wav' });
 }
+function makeWaveformUrl(buffer, widthPx, heightPx) {
+  widthPx = Math.max(4, Math.round(widthPx));
+  heightPx = Math.max(4, Math.round(heightPx));
+  const scale = 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = widthPx * scale;
+  canvas.height = heightPx * scale;
+  const g = canvas.getContext('2d');
+  const numCh = buffer.numberOfChannels;
+  const chData = [];
+  for (let ch=0; ch<numCh; ch++) chData.push(buffer.getChannelData(ch));
+  const totalSamples = buffer.length;
+  const midY = (heightPx*scale)/2;
+  g.strokeStyle = 'rgba(205,232,224,0.85)';
+  g.lineWidth = 1 * scale;
+  g.beginPath();
+  for (let x=0; x<widthPx*scale; x++) {
+    const sStart = Math.floor((x/(widthPx*scale)) * totalSamples);
+    const sEnd = Math.max(sStart+1, Math.floor(((x+1)/(widthPx*scale)) * totalSamples));
+    let min=1, max=-1;
+    for (let s=sStart; s<sEnd; s++) {
+      for (let ch=0; ch<numCh; ch++) {
+        const v = chData[ch][s];
+        if (v < min) min = v;
+        if (v > max) max = v;
+      }
+    }
+    if (max < min) { max = 0; min = 0; }
+    const y1 = midY - max*midY, y2 = midY - min*midY;
+    g.moveTo(x, y1); g.lineTo(x, y2);
+  }
+  g.stroke();
+  return canvas.toDataURL();
+}
 function sliceAudioBuffer(buffer, startSec, endSec) {
   const sr = buffer.sampleRate;
   const startSample = Math.max(0, Math.floor(startSec*sr));
@@ -257,7 +289,9 @@ function makeTrimmedClip(original, sliceStartSec, sliceEndSec, newAbsStart) {
   const dur = sliceEndSec - sliceStartSec;
   if (dur < MIN_CLIP_DUR) return null;
   const buffer = sliceAudioBuffer(original.buffer, sliceStartSec, sliceEndSec);
-  return { id: genId(), start:newAbsStart, duration:dur, buffer, blob: audioBufferToWavBlob(buffer) };
+  const rowH = 78 - 16;
+  return { id: genId(), start:newAbsStart, duration:dur, buffer, blob: audioBufferToWavBlob(buffer),
+    waveformUrl: makeWaveformUrl(buffer, Math.max(dur*PPS, 28), rowH) };
 }
 function resolveOverlaps(trackClips, newStart, newEnd, excludeId) {
   const toRemove=[], toAdd=[];
@@ -363,7 +397,8 @@ async function startRecording() {
       const { toRemove, toAdd } = resolveOverlaps(trk.clips, newStart, newEnd, null);
       trk.clips = trk.clips.filter(c => !toRemove.includes(c.id));
       trk.clips.push(...toAdd);
-      trk.clips.push({ id:genId(), start:newStart, duration:decoded.duration, buffer:decoded, blob:rawBlob });
+      trk.clips.push({ id:genId(), start:newStart, duration:decoded.duration, buffer:decoded, blob:rawBlob,
+        waveformUrl: makeWaveformUrl(decoded, Math.max(decoded.duration*PPS, 28), 78-16) });
       playheadPos = newEnd;
       saveProject();
       renderAll();
@@ -440,20 +475,10 @@ function stopPlayback(fixedPos) {
 }
 playBtn.addEventListener('click', () => { if (playing) stopPlayback(); else play(); });
 
-/* ---------- Clip preview / delete ---------- */
-function togglePreview(clip) {
-  if (previewId===clip.id) { previewAudio && previewAudio.pause(); previewId=null; renderAll(); return; }
-  if (previewAudio) previewAudio.pause();
-  previewAudio = new Audio(URL.createObjectURL(clip.blob));
-  previewAudio.onended = () => { previewId=null; renderAll(); };
-  previewAudio.play();
-  previewId = clip.id;
-  renderAll();
-}
+/* ---------- Clip delete ---------- */
 function deleteClip(trackId, clipId) {
   const t = tracks.find(t=>t.id===trackId);
   t.clips = t.clips.filter(c=>c.id!==clipId);
-  if (previewId===clipId) { previewAudio && previewAudio.pause(); previewId=null; }
   saveProject();
   renderAll();
 }
@@ -492,7 +517,7 @@ window.addEventListener('pointerup', () => {
   const wasMoved = dragState.moved;
   dragState = null;
   if (!clip || !t) return;
-  if (!wasMoved) { togglePreview(clip); return; }
+  if (!wasMoved) return;
   const newStart = clip.start, newEnd = newStart+clip.duration;
   const { toRemove, toAdd } = resolveOverlaps(t.clips, newStart, newEnd, clip.id);
   t.clips = t.clips.filter(c => !toRemove.includes(c.id));
@@ -545,11 +570,20 @@ function renderLanes() {
     }
     t.clips.forEach((c, idx) => {
       const block = document.createElement('div');
-      block.className = 'clip-block' + (previewId===c.id?' playing':'') + (dragState && dragState.id===c.id?' dragging':'');
+      block.className = 'clip-block' + (dragState && dragState.id===c.id?' dragging':'');
       block.style.left = (c.start*PPS)+'px';
       block.style.width = Math.max(c.duration*PPS, 28)+'px';
       block.title = 'Clip '+(idx+1)+' — '+fmt(c.duration);
-      block.textContent = (previewId===c.id?'⏸ ':'▶ ')+(idx+1);
+      if (c.waveformUrl) {
+        block.style.backgroundImage = 'url(' + c.waveformUrl + ')';
+        block.style.backgroundSize = '100% 100%';
+        block.style.backgroundRepeat = 'no-repeat';
+      }
+      const numLabel = document.createElement('span');
+      numLabel.style.position = 'absolute'; numLabel.style.left = '3px'; numLabel.style.top = '2px';
+      numLabel.style.fontSize = '9px'; numLabel.style.opacity = '0.75';
+      numLabel.textContent = idx+1;
+      block.appendChild(numLabel);
       block.addEventListener('pointerdown', (e) => startClipDrag(e, t.id, c));
       const del = document.createElement('div');
       del.className='clip-del'; del.textContent='✕';
@@ -659,7 +693,8 @@ async function loadProject() {
       for (const sc of st.clips) {
         const blob = new Blob([sc.data], { type: sc.mimeType });
         const buffer = await ctx.decodeAudioData(sc.data.slice(0));
-        track.clips.push({ id:sc.id, start:sc.start, duration:sc.duration, buffer, blob });
+        track.clips.push({ id:sc.id, start:sc.start, duration:sc.duration, buffer, blob,
+          waveformUrl: makeWaveformUrl(buffer, Math.max(sc.duration*PPS, 28), 78-16) });
       }
       tracks.push(track);
     }
