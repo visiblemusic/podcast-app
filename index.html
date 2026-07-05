@@ -3,362 +3,539 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Tape — simple recorder</title>
+<title>Tape — single track recorder</title>
 <style>
   :root {
-    --bg: #0c0b0a;
-    --panel: #1c1a17;
-    --border: #34302a;
-    --text: #ede4d3;
-    --dim: #948a78;
-    --amber: #e8a33d;
-    --red: #c0392b;
-    --red-dim: rgba(192,57,43,0.35);
-    --teal: #2f4a48;
-    --teal-light: #cde8e0;
+    --bg: #0c0b0a; --panel: #1c1a17; --border: #34302a;
+    --text: #ede4d3; --dim: #948a78; --amber: #e8a33d;
+    --red: #c0392b; --red-dim: rgba(192,57,43,0.35);
+    --teal: #2f4a48; --teal-light: #cde8e0;
   }
-  * { box-sizing: border-box; }
-  html, body {
-    margin: 0; padding: 0;
-    background: var(--bg); color: var(--text);
+  * { box-sizing: border-box; -webkit-user-select: none; user-select: none; }
+  html, body { margin:0; padding:0; background:var(--bg); color:var(--text);
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    -webkit-tap-highlight-color: transparent;
-  }
-  .wrap { max-width: 640px; margin: 0 auto; padding: 24px 16px 48px; }
-  h1 { font-size: 15px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--amber); margin: 0 0 4px; }
-  .sub { font-size: 12px; color: var(--dim); margin: 0 0 24px; }
-  .notice {
-    display: flex; gap: 8px; align-items: flex-start;
-    background: rgba(192,57,43,0.12); border: 1px solid var(--red);
-    color: #f0c9c0; font-size: 13px; padding: 10px 12px; border-radius: 8px;
-    margin-bottom: 20px; display: none;
-  }
-  .notice.show { display: flex; }
-  .transport {
-    display: flex; align-items: center; gap: 18px;
-    background: var(--panel); border: 1px solid var(--border);
-    border-radius: 12px; padding: 18px; margin-bottom: 28px;
-  }
-  #recordBtn {
-    width: 62px; height: 62px; border-radius: 50%;
-    border: none; flex-shrink: 0; cursor: pointer;
-    background: var(--red); color: var(--text);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 22px; transition: background 0.15s;
-  }
-  #recordBtn.recording { background: var(--amber); color: #1c1a17; }
-  #recordBtn:disabled { opacity: 0.35; cursor: not-allowed; }
-  .transport-info { flex: 1; min-width: 0; }
-  #timer { font-size: 22px; font-variant-numeric: tabular-nums; }
-  .meter-track { margin-top: 8px; height: 8px; width: 100%; background: var(--border); border-radius: 4px; overflow: hidden; }
-  #meterFill { height: 100%; width: 0%; background: var(--amber); }
-  #status { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; }
-  .section-label { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 8px; }
-  #timelineOuter {
-    width: 100%; overflow-x: auto;
-    background: var(--panel); border: 1px solid var(--border);
-    border-radius: 12px; margin-bottom: 28px;
-  }
-  #timelineInner { position: relative; padding: 14px 10px; }
-  #ruler { position: relative; height: 16px; margin-bottom: 10px; border-bottom: 1px solid var(--border); }
-  .tick { position: absolute; top: 0; bottom: 0; width: 1px; background: #524c40; }
-  .tick-label { position: absolute; top: -1px; left: 4px; font-size: 9px; color: var(--dim); }
-  #track { position: relative; height: 40px; }
-  .empty-hint { font-size: 12px; color: #514c40; position: absolute; left: 0; top: 6px; }
-  .take-block {
-    position: absolute; top: 0; height: 40px; border-radius: 6px;
-    background: var(--teal); border: 1px solid #3d5b58; color: var(--teal-light);
-    display: flex; align-items: center; gap: 5px; padding: 0 8px;
-    cursor: pointer; font-size: 10px; overflow: hidden; white-space: nowrap;
-  }
-  .take-block.playing { background: var(--amber); border-color: var(--amber); color: #1c1a17; }
-  .live-block { position: absolute; top: 0; height: 40px; border-radius: 6px; background: var(--red-dim); border: 1px solid var(--red); }
-  #takesList { display: flex; flex-direction: column; gap: 8px; }
-  .take-row {
-    display: flex; align-items: center; gap: 12px;
-    background: var(--panel); border: 1px solid var(--border);
-    border-radius: 10px; padding: 8px 12px;
-  }
-  .icon-btn {
-    width: 32px; height: 32px; border-radius: 50%; border: none; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 13px;
-  }
-  .icon-btn.play { background: var(--teal); color: var(--teal-light); }
-  .icon-btn.ghost { background: transparent; color: var(--dim); }
-  .icon-btn.ghost:hover { background: var(--border); color: var(--text); }
-  .take-meta { flex: 1; min-width: 0; font-size: 13px; }
-  .take-meta .sub-meta { font-size: 10px; color: var(--dim); margin-top: 2px; }
-  .no-takes { font-size: 12px; color: #514c40; }
+    -webkit-tap-highlight-color: transparent; }
+  .wrap { max-width: 700px; margin: 0 auto; padding: 20px 14px 48px; }
+  h1 { font-size: 15px; letter-spacing: .15em; text-transform: uppercase; color: var(--amber); margin: 0 0 4px; }
+  .sub { font-size: 12px; color: var(--dim); margin: 0 0 20px; }
+  .notice { display:none; gap:8px; align-items:flex-start; background: rgba(192,57,43,.12);
+    border:1px solid var(--red); color:#f0c9c0; font-size:13px; padding:10px 12px; border-radius:8px; margin-bottom:16px; }
+  .notice.show { display:flex; }
+  .transport { display:flex; align-items:center; gap:14px; background:var(--panel);
+    border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:18px; }
+  .tbtn { width:54px; height:54px; border-radius:50%; border:none; flex-shrink:0; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; font-size:19px; transition: background .15s; }
+  #recordBtn { background: var(--red); color: var(--text); }
+  #recordBtn.recording { background: var(--amber); color:#1c1a17; }
+  #playBtn { background: var(--teal); color: var(--teal-light); }
+  .tbtn:disabled { opacity:.3; cursor:not-allowed; }
+  .transport-info { flex:1; min-width:0; }
+  #timer { font-size:20px; font-variant-numeric: tabular-nums; }
+  .meter-track { margin-top:7px; height:7px; width:100%; background:var(--border); border-radius:4px; overflow:hidden; }
+  #meterFill { height:100%; width:0%; background:var(--amber); }
+  #status { font-size:10px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; margin-top:4px; }
+  #savedTag { font-size:10px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; opacity:0; transition:opacity .3s; }
+  .section-row { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px; }
+  .section-label { font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; }
+  #timelineOuter { width:100%; overflow-x:auto; background:var(--panel); border:1px solid var(--border); border-radius:12px; margin-bottom:22px; touch-action: pan-x; }
+  #timelineInner { position:relative; padding:16px 10px 12px; }
+  #ruler { position:relative; height:18px; margin-bottom:8px; border-bottom:1px solid var(--border); cursor: pointer; }
+  .tick { position:absolute; top:0; bottom:0; width:1px; background:#524c40; }
+  .tick-label { position:absolute; top:-1px; font-size:9px; color:var(--dim); }
+  #track { position:relative; height:52px; cursor:pointer; }
+  .empty-hint { font-size:12px; color:#514c40; position:absolute; left:0; top:16px; }
+  .clip-block { position:absolute; top:0; height:52px; border-radius:6px; background:var(--teal);
+    border:1px solid #3d5b58; color:var(--teal-light); display:flex; align-items:center; gap:5px;
+    padding:0 8px; cursor:grab; font-size:10px; overflow:hidden; white-space:nowrap; touch-action:none; }
+  .clip-block.playing { background: var(--amber); border-color: var(--amber); color:#1c1a17; }
+  .clip-block.dragging { opacity:.85; z-index:5; box-shadow:0 2px 8px rgba(0,0,0,.5); }
+  .live-block { position:absolute; top:0; height:52px; border-radius:6px; background:var(--red-dim); border:1px solid var(--red); }
+  .playhead { position:absolute; top:0; bottom:0; width:14px; margin-left:-7px; z-index:6; touch-action:none; cursor:ew-resize; }
+  .playhead .line { position:absolute; left:6px; top:0; bottom:0; width:2px; background:var(--amber); }
+  .playhead .handle { position:absolute; left:1px; top:-2px; width:12px; height:8px; background:var(--amber); border-radius:2px; }
+  #clipsList { display:flex; flex-direction:column; gap:8px; }
+  .clip-row { display:flex; align-items:center; gap:12px; background:var(--panel); border:1px solid var(--border);
+    border-radius:10px; padding:8px 12px; }
+  .icon-btn { width:30px; height:30px; border-radius:50%; border:none; flex-shrink:0; cursor:pointer; font-size:12px;
+    display:flex; align-items:center; justify-content:center; }
+  .icon-btn.play { background:var(--teal); color:var(--teal-light); }
+  .icon-btn.ghost { background:transparent; color:var(--dim); }
+  .clip-meta { flex:1; min-width:0; font-size:13px; }
+  .clip-meta .sub-meta { font-size:10px; color:var(--dim); margin-top:2px; }
+  .no-clips { font-size:12px; color:#514c40; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>Tape</h1>
-  <p class="sub">simple recorder — record takes, play them back</p>
-
+  <p class="sub">single-track recorder — drag the playhead, record, move clips around</p>
   <div class="notice" id="notice"></div>
 
   <div class="transport">
-    <button id="recordBtn" aria-label="Record">●</button>
+    <button id="recordBtn" class="tbtn" aria-label="Record">●</button>
+    <button id="playBtn" class="tbtn" aria-label="Play">▶</button>
     <div class="transport-info">
       <div id="timer">00:00.0</div>
       <div class="meter-track"><div id="meterFill"></div></div>
       <div id="status">ready</div>
     </div>
+    <div id="savedTag">saved</div>
   </div>
 
-  <div class="section-label">Timeline</div>
+  <div class="section-row"><span class="section-label">Timeline</span><span class="section-label" id="playheadReadout">0:00.0</span></div>
   <div id="timelineOuter">
     <div id="timelineInner">
       <div id="ruler"></div>
-      <div id="track">
-        <span class="empty-hint" id="emptyHint">no takes yet — press record</span>
-      </div>
+      <div id="track"><span class="empty-hint" id="emptyHint">no clips yet — press record</span></div>
+      <div class="playhead" id="playheadEl"><div class="line"></div><div class="handle"></div></div>
     </div>
   </div>
 
-  <div class="section-label">Takes</div>
-  <div id="takesList">
-    <div class="no-takes" id="noTakesMsg">Recorded takes will appear here.</div>
-  </div>
+  <div class="section-label" style="margin-bottom:8px;">Clips</div>
+  <div id="clipsList"><div class="no-clips" id="noClipsMsg">Recorded clips will appear here.</div></div>
 </div>
 
 <script>
 const PPS = 40;
+const MIN_CLIP_DUR = 0.04;
+
+let audioCtx = null;
 let stream = null, mediaRecorder = null, chunks = [];
-let audioCtx = null, analyser = null, rafId = null;
-let isRecording = false, recordStartTime = 0, sessionStart = null, elapsed = 0;
-let takes = []; // {id, url, blob, start, duration}
-let currentAudio = null, playingId = null;
-let elapsedInterval = null;
+let analyser = null, meterRafId = null;
+let isRecording = false, recordStartTime = 0, elapsed = 0, elapsedInterval = null;
+let takeStartPos = 0;
+
+let clips = []; // {id, start, duration, buffer, blob}
+let playheadPos = 0;
+
+let playing = false, activeSources = [], playRAF = null, playStartCtxTime = 0, playStartPlayhead = 0;
+
+let previewAudio = null, previewId = null;
+
+let dragState = null; // {id, pointerId, startX, origStart, moved}
+let scrubbing = false;
 
 const recordBtn = document.getElementById('recordBtn');
+const playBtn = document.getElementById('playBtn');
 const timerEl = document.getElementById('timer');
 const meterFill = document.getElementById('meterFill');
 const statusEl = document.getElementById('status');
+const savedTag = document.getElementById('savedTag');
 const notice = document.getElementById('notice');
 const ruler = document.getElementById('ruler');
 const track = document.getElementById('track');
 const emptyHint = document.getElementById('emptyHint');
-const takesList = document.getElementById('takesList');
-const noTakesMsg = document.getElementById('noTakesMsg');
+const clipsList = document.getElementById('clipsList');
+const noClipsMsg = document.getElementById('noClipsMsg');
+const timelineInner = document.getElementById('timelineInner');
+const playheadEl = document.getElementById('playheadEl');
+const playheadReadout = document.getElementById('playheadReadout');
 
-function showNotice(msg) {
-  notice.textContent = msg;
-  notice.classList.add('show');
-}
-
+function genId() { return 'c' + Date.now() + Math.random().toString(36).slice(2,8); }
 function fmt(sec) {
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  const ms = Math.floor((sec % 1) * 10);
+  sec = Math.max(0, sec);
+  const m = Math.floor(sec/60), s = Math.floor(sec%60), ms = Math.floor((sec%1)*10);
   return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0') + '.' + ms;
+}
+function showNotice(msg) { notice.textContent = msg; notice.classList.add('show'); }
+function ensureAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
 }
 
 if (!navigator.mediaDevices || !window.MediaRecorder) {
-  showNotice("This browser doesn't support audio recording. Try Safari or Chrome, and make sure the page is served over HTTPS.");
+  showNotice("This browser doesn't support audio recording. Try Safari or Chrome over HTTPS.");
   recordBtn.disabled = true;
 }
+if (!window.indexedDB) {
+  showNotice("This browser doesn't support saved projects (IndexedDB unavailable). Recording will still work but won't persist.");
+}
 
+/* ---------- WAV encode / buffer slicing ---------- */
+function audioBufferToWavBlob(buffer) {
+  const numCh = buffer.numberOfChannels, sr = buffer.sampleRate, len = buffer.length;
+  const bytesPerSample = 2, blockAlign = numCh * bytesPerSample;
+  const dataSize = len * blockAlign;
+  const bufOut = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(bufOut);
+  function writeStr(off, str) { for (let i=0;i<str.length;i++) view.setUint8(off+i, str.charCodeAt(i)); }
+  writeStr(0,'RIFF'); view.setUint32(4, 36+dataSize, true); writeStr(8,'WAVE');
+  writeStr(12,'fmt '); view.setUint32(16,16,true); view.setUint16(20,1,true);
+  view.setUint16(22,numCh,true); view.setUint32(24,sr,true);
+  view.setUint32(28, sr*blockAlign, true); view.setUint16(32, blockAlign, true); view.setUint16(34,16,true);
+  writeStr(36,'data'); view.setUint32(40, dataSize, true);
+  const channels = []; for (let ch=0; ch<numCh; ch++) channels.push(buffer.getChannelData(ch));
+  let offset = 44;
+  for (let i=0;i<len;i++) {
+    for (let ch=0; ch<numCh; ch++) {
+      let s = Math.max(-1, Math.min(1, channels[ch][i]));
+      s = s < 0 ? s*0x8000 : s*0x7FFF;
+      view.setInt16(offset, s, true); offset += 2;
+    }
+  }
+  return new Blob([bufOut], { type: 'audio/wav' });
+}
+function sliceAudioBuffer(buffer, startSec, endSec) {
+  const sr = buffer.sampleRate;
+  const startSample = Math.max(0, Math.floor(startSec*sr));
+  const endSample = Math.min(buffer.length, Math.floor(endSec*sr));
+  const length = Math.max(1, endSample - startSample);
+  const ctx = ensureAudioCtx();
+  const out = ctx.createBuffer(buffer.numberOfChannels, length, sr);
+  for (let ch=0; ch<buffer.numberOfChannels; ch++) {
+    const data = buffer.getChannelData(ch).slice(startSample, endSample);
+    out.copyToChannel(data, ch, 0);
+  }
+  return out;
+}
+function makeTrimmedClip(original, sliceStartSec, sliceEndSec, newAbsStart) {
+  const dur = sliceEndSec - sliceStartSec;
+  if (dur < MIN_CLIP_DUR) return null;
+  const buffer = sliceAudioBuffer(original.buffer, sliceStartSec, sliceEndSec);
+  const blob = audioBufferToWavBlob(buffer);
+  return { id: genId(), start: newAbsStart, duration: dur, buffer, blob };
+}
+function resolveOverlaps(newStart, newEnd, excludeId) {
+  const toRemove = [], toAdd = [];
+  for (const c of clips) {
+    if (c.id === excludeId) continue;
+    const cStart = c.start, cEnd = c.start + c.duration;
+    if (cEnd <= newStart || cStart >= newEnd) continue;
+    toRemove.push(c.id);
+    if (cStart >= newStart && cEnd <= newEnd) {
+      continue; // fully covered, dropped
+    } else if (cStart < newStart && cEnd > newEnd) {
+      const left = makeTrimmedClip(c, 0, newStart - cStart, cStart);
+      const right = makeTrimmedClip(c, newEnd - cStart, c.duration, newEnd);
+      if (left) toAdd.push(left);
+      if (right) toAdd.push(right);
+    } else if (cStart < newStart) {
+      const left = makeTrimmedClip(c, 0, newStart - cStart, cStart);
+      if (left) toAdd.push(left);
+    } else {
+      const right = makeTrimmedClip(c, newEnd - cStart, c.duration, newEnd);
+      if (right) toAdd.push(right);
+    }
+  }
+  return { toRemove, toAdd };
+}
+
+/* ---------- Recording ---------- */
 function tickLevel() {
   if (!analyser) return;
   const data = new Uint8Array(analyser.frequencyBinCount);
   analyser.getByteTimeDomainData(data);
   let sum = 0;
-  for (let i = 0; i < data.length; i++) {
-    const v = (data[i] - 128) / 128;
-    sum += v * v;
-  }
-  const rms = Math.sqrt(sum / data.length);
-  meterFill.style.width = Math.min(1, rms * 4) * 100 + '%';
-  rafId = requestAnimationFrame(tickLevel);
+  for (let i=0;i<data.length;i++) { const v=(data[i]-128)/128; sum += v*v; }
+  meterFill.style.width = Math.min(1, Math.sqrt(sum/data.length)*4)*100 + '%';
+  meterRafId = requestAnimationFrame(tickLevel);
 }
-
 async function startRecording() {
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch (err) {
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch (err) {
     showNotice("Microphone access was blocked or failed. Check the site's permission settings and that this page is loaded over HTTPS.");
     return;
   }
-
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const source = audioCtx.createMediaStreamSource(stream);
-  analyser = audioCtx.createAnalyser();
-  analyser.fftSize = 512;
+  const ctx = ensureAudioCtx();
+  if (ctx.state === 'suspended') ctx.resume();
+  const source = ctx.createMediaStreamSource(stream);
+  analyser = ctx.createAnalyser(); analyser.fftSize = 512;
   source.connect(analyser);
   tickLevel();
 
   let mimeType = '';
   if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
   else if (MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
-
   mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
   chunks = [];
+  takeStartPos = playheadPos;
 
-  if (sessionStart === null) sessionStart = Date.now();
-  const takeStart = (Date.now() - sessionStart) / 1000;
-
-  mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-  mediaRecorder.onstop = () => {
-    const blob = new Blob(chunks, { type: mediaRecorder.mimeType || 'audio/webm' });
-    const url = URL.createObjectURL(blob);
-    const duration = (Date.now() - recordStartTime) / 1000;
-    takes.push({ id: 't' + Date.now(), url, blob, start: takeStart, duration });
-    elapsed = 0;
-    cancelAnimationFrame(rafId);
-    meterFill.style.width = '0%';
-    analyser = null;
-    if (audioCtx) { audioCtx.close(); audioCtx = null; }
-    stream.getTracks().forEach(t => t.stop());
-    renderAll();
+  mediaRecorder.ondataavailable = e => { if (e.data.size>0) chunks.push(e.data); };
+  mediaRecorder.onstop = async () => {
+    const rawBlob = new Blob(chunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+    cancelAnimationFrame(meterRafId); meterFill.style.width='0%'; analyser = null;
+    stream.getTracks().forEach(t=>t.stop());
+    try {
+      const arrBuf = await rawBlob.arrayBuffer();
+      const decoded = await ctx.decodeAudioData(arrBuf);
+      const newStart = takeStartPos, newEnd = newStart + decoded.duration;
+      const { toRemove, toAdd } = resolveOverlaps(newStart, newEnd, null);
+      clips = clips.filter(c => !toRemove.includes(c.id));
+      clips.push(...toAdd);
+      clips.push({ id: genId(), start: newStart, duration: decoded.duration, buffer: decoded, blob: rawBlob });
+      playheadPos = newEnd;
+      saveProject();
+      renderAll();
+    } catch (e) {
+      showNotice('Could not process the recording: ' + e.message);
+    }
   };
-
   recordStartTime = Date.now();
   mediaRecorder.start();
   isRecording = true;
-  recordBtn.classList.add('recording');
-  recordBtn.textContent = '■';
+  recordBtn.classList.add('recording'); recordBtn.textContent = '■';
+  playBtn.disabled = true;
   statusEl.textContent = 'recording — input level';
-
   elapsedInterval = setInterval(() => {
-    elapsed = (Date.now() - recordStartTime) / 1000;
+    elapsed = (Date.now()-recordStartTime)/1000;
     timerEl.textContent = fmt(elapsed);
     renderTrack();
   }, 50);
 }
-
 function stopRecording() {
   if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
   isRecording = false;
-  recordBtn.classList.remove('recording');
-  recordBtn.textContent = '●';
+  recordBtn.classList.remove('recording'); recordBtn.textContent = '●';
+  playBtn.disabled = false;
   statusEl.textContent = 'ready';
   clearInterval(elapsedInterval);
   timerEl.textContent = '00:00.0';
+  elapsed = 0;
 }
+recordBtn.addEventListener('click', () => { if (isRecording) stopRecording(); else startRecording(); });
 
-recordBtn.addEventListener('click', () => {
-  if (isRecording) stopRecording(); else startRecording();
-});
-
-function togglePlay(take) {
-  if (playingId === take.id) {
-    currentAudio && currentAudio.pause();
-    playingId = null;
-    renderAll();
-    return;
+/* ---------- Playback ---------- */
+function stopSources() { activeSources.forEach(s => { try { s.stop(); } catch(e){} }); activeSources = []; }
+function play() {
+  const ctx = ensureAudioCtx();
+  if (ctx.state === 'suspended') ctx.resume();
+  stopSources();
+  playStartPlayhead = playheadPos;
+  playStartCtxTime = ctx.currentTime + 0.05;
+  for (const c of clips) {
+    const clipEnd = c.start + c.duration;
+    if (clipEnd <= playheadPos) continue;
+    const src = ctx.createBufferSource();
+    src.buffer = c.buffer;
+    src.connect(ctx.destination);
+    if (c.start >= playheadPos) src.start(playStartCtxTime + (c.start - playheadPos));
+    else src.start(playStartCtxTime, playheadPos - c.start);
+    activeSources.push(src);
   }
-  if (currentAudio) currentAudio.pause();
-  currentAudio = new Audio(take.url);
-  currentAudio.onended = () => { playingId = null; renderAll(); };
-  currentAudio.play();
-  playingId = take.id;
+  playing = true;
+  playBtn.textContent = '■';
+  recordBtn.disabled = true;
+  updatePlaybackFrame();
+}
+function updatePlaybackFrame() {
+  const ctx = audioCtx;
+  const elapsedSincePlay = ctx.currentTime - playStartCtxTime;
+  if (elapsedSincePlay >= 0) playheadPos = playStartPlayhead + elapsedSincePlay;
+  const totalEnd = clips.reduce((m,c)=>Math.max(m, c.start+c.duration), 0);
+  renderPlayheadPosition();
+  if (playing && totalEnd > 0 && playheadPos >= totalEnd) { stopPlayback(totalEnd); return; }
+  if (playing) playRAF = requestAnimationFrame(updatePlaybackFrame);
+}
+function stopPlayback(fixedPos) {
+  playing = false;
+  stopSources();
+  cancelAnimationFrame(playRAF);
+  if (typeof fixedPos === 'number') playheadPos = fixedPos;
+  playBtn.textContent = '▶';
+  recordBtn.disabled = false;
+  renderPlayheadPosition();
+}
+playBtn.addEventListener('click', () => { if (playing) stopPlayback(); else play(); });
+
+/* ---------- Clip preview (from list) ---------- */
+function togglePreview(clip) {
+  if (previewId === clip.id) { previewAudio && previewAudio.pause(); previewId = null; renderAll(); return; }
+  if (previewAudio) previewAudio.pause();
+  previewAudio = new Audio(URL.createObjectURL(clip.blob));
+  previewAudio.onended = () => { previewId = null; renderAll(); };
+  previewAudio.play();
+  previewId = clip.id;
   renderAll();
 }
-
-function deleteTake(id) {
-  takes = takes.filter(t => t.id !== id);
-  if (playingId === id) { currentAudio && currentAudio.pause(); playingId = null; }
+function deleteClip(id) {
+  clips = clips.filter(c => c.id !== id);
+  if (previewId === id) { previewAudio && previewAudio.pause(); previewId = null; }
+  saveProject();
   renderAll();
 }
-
-function downloadTake(take, idx) {
-  const ext = take.blob.type.includes('mp4') ? 'm4a' : 'webm';
+function downloadClip(clip, idx) {
   const a = document.createElement('a');
-  a.href = take.url;
-  a.download = 'take-' + (idx + 1) + '.' + ext;
+  a.href = URL.createObjectURL(clip.blob);
+  a.download = 'clip-' + (idx+1) + '.wav';
   a.click();
 }
 
+/* ---------- Playhead & clip dragging ---------- */
+function xToSec(clientX) {
+  const rect = timelineInner.getBoundingClientRect();
+  return Math.max(0, (clientX - rect.left) / PPS);
+}
+function onScrubStart(e) {
+  scrubbing = true;
+  playheadPos = xToSec(e.clientX);
+  renderPlayheadPosition();
+  e.preventDefault();
+}
+function onScrubMove(e) {
+  if (!scrubbing) return;
+  playheadPos = xToSec(e.clientX);
+  renderPlayheadPosition();
+}
+function onScrubEnd() { scrubbing = false; }
+ruler.addEventListener('pointerdown', onScrubStart);
+track.addEventListener('pointerdown', (e) => { if (e.target === track) onScrubStart(e); });
+window.addEventListener('pointermove', onScrubMove);
+window.addEventListener('pointerup', onScrubEnd);
+
+function startClipDrag(e, clip) {
+  e.stopPropagation();
+  dragState = { id: clip.id, startX: e.clientX, origStart: clip.start, moved: false };
+  e.target.setPointerCapture && e.target.setPointerCapture(e.pointerId);
+}
+window.addEventListener('pointermove', (e) => {
+  if (!dragState) return;
+  const dx = e.clientX - dragState.startX;
+  if (Math.abs(dx) > 3) dragState.moved = true;
+  const deltaSec = dx / PPS;
+  const clip = clips.find(c => c.id === dragState.id);
+  if (!clip) return;
+  clip.start = Math.max(0, dragState.origStart + deltaSec);
+  renderTrack();
+});
+window.addEventListener('pointerup', () => {
+  if (!dragState) return;
+  const clip = clips.find(c => c.id === dragState.id);
+  const wasMoved = dragState.moved;
+  const dragId = dragState.id;
+  dragState = null;
+  if (!clip) return;
+  if (!wasMoved) { togglePreview(clip); return; }
+  const newStart = clip.start, newEnd = newStart + clip.duration;
+  const { toRemove, toAdd } = resolveOverlaps(newStart, newEnd, dragId);
+  clips = clips.filter(c => !toRemove.includes(c.id));
+  clips.push(...toAdd);
+  saveProject();
+  renderAll();
+});
+
+/* ---------- Rendering ---------- */
+function renderPlayheadPosition() {
+  playheadEl.style.left = (playheadPos * PPS) + 'px';
+  playheadReadout.textContent = fmt(playheadPos);
+}
 function renderTrack() {
-  const totalDuration = Math.max(8, ...takes.map(t => t.start + t.duration), isRecording ? elapsed : 0);
+  const totalDuration = Math.max(8, ...clips.map(c=>c.start+c.duration), isRecording ? takeStartPos+elapsed : 0, playheadPos+2);
   const tickCount = Math.ceil(totalDuration);
   const width = totalDuration * PPS + 40;
-  document.getElementById('timelineInner').style.width = width + 'px';
-  document.getElementById('timelineInner').style.minWidth = '100%';
+  timelineInner.style.width = width + 'px';
+  timelineInner.style.minWidth = '100%';
 
   ruler.innerHTML = '';
-  for (let i = 0; i <= tickCount; i++) {
+  for (let i=0;i<=tickCount;i++) {
     const tick = document.createElement('div');
-    tick.className = 'tick';
-    tick.style.left = (i * PPS) + 'px';
+    tick.className = 'tick'; tick.style.left = (i*PPS)+'px';
     ruler.appendChild(tick);
     if (i % 5 === 0) {
       const label = document.createElement('span');
-      label.className = 'tick-label';
-      label.textContent = i + 's';
-      label.style.left = (i * PPS + 4) + 'px';
-      label.style.position = 'absolute';
+      label.className = 'tick-label'; label.textContent = i+'s';
+      label.style.left = (i*PPS+3)+'px';
       ruler.appendChild(label);
     }
   }
 
-  track.querySelectorAll('.take-block, .live-block').forEach(el => el.remove());
-  emptyHint.style.display = (takes.length === 0 && !isRecording) ? 'block' : 'none';
+  track.querySelectorAll('.clip-block, .live-block').forEach(el => el.remove());
+  emptyHint.style.display = (clips.length===0 && !isRecording) ? 'block' : 'none';
 
-  takes.forEach((t, idx) => {
+  clips.forEach((c, idx) => {
     const block = document.createElement('div');
-    block.className = 'take-block' + (playingId === t.id ? ' playing' : '');
-    block.style.left = (t.start * PPS) + 'px';
-    block.style.width = Math.max(t.duration * PPS, 28) + 'px';
-    block.title = 'Take ' + (idx + 1) + ' — ' + fmt(t.duration);
-    block.textContent = (playingId === t.id ? '⏸ ' : '▶ ') + (idx + 1);
-    block.addEventListener('click', () => togglePlay(t));
+    block.className = 'clip-block' + (previewId===c.id ? ' playing' : '') + (dragState && dragState.id===c.id ? ' dragging' : '');
+    block.style.left = (c.start*PPS)+'px';
+    block.style.width = Math.max(c.duration*PPS, 28)+'px';
+    block.title = 'Clip '+(idx+1)+' — '+fmt(c.duration);
+    block.textContent = (previewId===c.id ? '⏸ ' : '▶ ') + (idx+1);
+    block.addEventListener('pointerdown', (e) => startClipDrag(e, c));
     track.appendChild(block);
   });
 
   if (isRecording) {
     const live = document.createElement('div');
     live.className = 'live-block';
-    const start = sessionStart === null ? 0 : (recordStartTime - sessionStart) / 1000;
-    live.style.left = (start * PPS) + 'px';
-    live.style.width = Math.max(elapsed * PPS, 4) + 'px';
+    live.style.left = (takeStartPos*PPS)+'px';
+    live.style.width = Math.max(elapsed*PPS, 4)+'px';
     track.appendChild(live);
   }
+  renderPlayheadPosition();
 }
-
-function renderTakesList() {
-  takesList.querySelectorAll('.take-row').forEach(el => el.remove());
-  noTakesMsg.style.display = takes.length === 0 ? 'block' : 'none';
-
-  takes.forEach((t, idx) => {
+function renderClipsList() {
+  clipsList.querySelectorAll('.clip-row').forEach(el => el.remove());
+  noClipsMsg.style.display = clips.length===0 ? 'block' : 'none';
+  const sorted = [...clips].sort((a,b)=>a.start-b.start);
+  sorted.forEach((c, idx) => {
     const row = document.createElement('div');
-    row.className = 'take-row';
-
-    const playBtn = document.createElement('button');
-    playBtn.className = 'icon-btn play';
-    playBtn.textContent = playingId === t.id ? '⏸' : '▶';
-    playBtn.addEventListener('click', () => togglePlay(t));
-
+    row.className = 'clip-row';
+    const playRowBtn = document.createElement('button');
+    playRowBtn.className = 'icon-btn play';
+    playRowBtn.textContent = previewId===c.id ? '⏸' : '▶';
+    playRowBtn.addEventListener('click', () => togglePreview(c));
     const meta = document.createElement('div');
-    meta.className = 'take-meta';
-    meta.innerHTML = 'Take ' + (idx + 1) + '<div class="sub-meta">starts ' + fmt(t.start) + ' · duration ' + fmt(t.duration) + '</div>';
-
+    meta.className = 'clip-meta';
+    meta.innerHTML = 'Clip '+(idx+1)+'<div class="sub-meta">starts '+fmt(c.start)+' · duration '+fmt(c.duration)+'</div>';
     const dlBtn = document.createElement('button');
-    dlBtn.className = 'icon-btn ghost';
-    dlBtn.textContent = '⬇';
-    dlBtn.addEventListener('click', () => downloadTake(t, idx));
-
+    dlBtn.className = 'icon-btn ghost'; dlBtn.textContent = '⬇';
+    dlBtn.addEventListener('click', () => downloadClip(c, idx));
     const delBtn = document.createElement('button');
-    delBtn.className = 'icon-btn ghost';
-    delBtn.textContent = '✕';
-    delBtn.addEventListener('click', () => deleteTake(t.id));
-
-    row.appendChild(playBtn);
-    row.appendChild(meta);
-    row.appendChild(dlBtn);
-    row.appendChild(delBtn);
-    takesList.appendChild(row);
+    delBtn.className = 'icon-btn ghost'; delBtn.textContent = '✕';
+    delBtn.addEventListener('click', () => deleteClip(c.id));
+    row.appendChild(playRowBtn); row.appendChild(meta); row.appendChild(dlBtn); row.appendChild(delBtn);
+    clipsList.appendChild(row);
   });
 }
+function renderAll() { renderTrack(); renderClipsList(); }
 
-function renderAll() {
-  renderTrack();
-  renderTakesList();
+/* ---------- Persistence (IndexedDB) ---------- */
+const DB_NAME='tapeDB', DB_VERSION=1, STORE='project';
+function openDB() {
+  return new Promise((resolve,reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+function txDone(tx) { return new Promise((res,rej) => { tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error); }); }
+let saveTimer = null;
+function saveProject() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    if (!window.indexedDB) return;
+    try {
+      const db = await openDB();
+      const serialClips = await Promise.all(clips.map(async c => ({
+        id: c.id, start: c.start, duration: c.duration, mimeType: c.blob.type, data: await c.blob.arrayBuffer()
+      })));
+      const tx = db.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).put({ clips: serialClips, playheadPos }, 'current');
+      await txDone(tx);
+      savedTag.style.opacity = '1';
+      setTimeout(()=> savedTag.style.opacity='0', 1200);
+    } catch (e) { console.error('save failed', e); }
+  }, 300);
+}
+async function loadProject() {
+  if (!window.indexedDB) { renderAll(); return; }
+  try {
+    const db = await openDB();
+    const tx = db.transaction(STORE, 'readonly');
+    const req = tx.objectStore(STORE).get('current');
+    const result = await new Promise((res,rej) => { req.onsuccess=()=>res(req.result); req.onerror=()=>rej(req.error); });
+    if (!result) { renderAll(); return; }
+    const ctx = ensureAudioCtx();
+    for (const sc of result.clips) {
+      const blob = new Blob([sc.data], { type: sc.mimeType });
+      const buffer = await ctx.decodeAudioData(sc.data.slice(0));
+      clips.push({ id: sc.id, start: sc.start, duration: sc.duration, buffer, blob });
+    }
+    playheadPos = result.playheadPos || 0;
+    renderAll();
+  } catch (e) { console.error('load failed', e); renderAll(); }
 }
 
-renderAll();
+loadProject();
 </script>
 </body>
 </html>
