@@ -86,7 +86,8 @@
   .clip-block.dragging { opacity:.85; z-index:5; box-shadow:0 2px 8px rgba(0,0,0,.5); }
   .clip-block.fade-active { border:2px solid #f4d03f; box-shadow:0 0 0 2px rgba(244,208,63,0.35); z-index:4; }
   .clip-block.touch-selected { border:2px solid orange; box-shadow:0 0 0 2px rgba(255,165,0,0.35); z-index:4; }
-  .trim-handle { position:absolute; top:0; bottom:0; width:24px; cursor:ew-resize;
+  .clip-block.lasso-selected { border:2px solid #6ec6ff; box-shadow:0 0 0 2px rgba(110,198,255,0.35); z-index:4; }
+  .trim-handle { position:absolute; top:0; bottom:0; width:14px; cursor:ew-resize;
     background:rgba(244,208,63,0.55); touch-action:none; z-index:6; }
   .trim-handle.left { left:0; border-radius:6px 0 0 6px; }
   .trim-handle.right { right:0; border-radius:0 6px 6px 0; }
@@ -112,7 +113,7 @@
     <div class="notice" id="notice"></div>
 
     <div class="transport" style="flex-wrap:wrap;">
-      <div class="tape-title-block"><div class="tape-title">Tape</div><div class="tape-version" id="versionTag">v10.4</div></div>
+      <div class="tape-title-block"><div class="tape-title">Tape</div><div class="tape-version" id="versionTag">v11</div></div>
       <div class="v-divider" style="height:36px;"></div>
       <button id="toStartBtn" class="tbtn" style="font-size:16px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back to start">|◀</button>
       <button id="skipBackBtn" class="tbtn" style="font-size:12px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back 10 seconds">-10s</button>
@@ -131,7 +132,7 @@
     <hr class="section-divider">
 
     <div class="section-row">
-      <button id="projectMenuBtn" style="font-size:14px; padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--amber);">Project ▾</button>
+      <button id="projectMenuBtn" style="height:44px; font-size:14px; padding:0 16px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--amber);">Project ▾</button>
       <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
         <button id="followBtn" style="height:44px; font-size:13px; padding:0 14px; border-radius:8px; border:1px solid var(--amber); background:var(--amber); color:#1c1a17; text-transform:uppercase; letter-spacing:.03em;">Follow</button>
         <button id="timeSelectionBtn" style="height:44px; font-size:12px; padding:0 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text); text-transform:uppercase; letter-spacing:.03em;">Time Selection</button>
@@ -165,7 +166,7 @@
   </div>
 
   <div style="margin-top:20px;">
-    <button id="browseFilesBtn" style="font-size:11px; padding:5px 10px; border-radius:6px; border:1px solid var(--border); background:var(--panel); color:var(--amber);">Browse sound files to add</button>
+    <button id="browseFilesBtn" style="height:44px; font-size:11px; padding:0 10px; border-radius:6px; border:1px solid var(--border); background:var(--panel); color:var(--amber);">Browse sound files to add</button>
     <div id="pickerWrap" style="display:none; margin-top:8px;">
       <input type="text" id="fileFilterInput" placeholder="filter selected files…" style="width:100%; background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:6px; font-size:12px; padding:6px 8px; margin-bottom:6px;">
       <div id="pickerResults" style="background:var(--panel); border:1px solid var(--border); border-radius:10px; max-height:220px; overflow-y:auto; padding:6px;"></div>
@@ -203,12 +204,14 @@ let playing = false, activeSources = [], playRAF = null, playStartCtxTime = 0, p
 let dragState = null;
 let activeEditClipId = null; // clip currently showing draggable handles
 let touchSelectedClipId = null; // clip currently shown with a plain selection border
+let lassoState = null; // {startX, startY, rect}
+let lassoSelectedIds = new Set();
 let activeEditType = null; // 'trim' | 'fade'
 let clipPress = null; // long-press/tap tracking on a clip body
 let emptyPress = null; // long-press/tap tracking on empty lane space
 let trimDragState = null;
 let fadeDragState = null;
-let clipboard = null; // {assetId, trimIn, trimOut, duration}
+let clipboard = null; // array of {assetId, trimIn, trimOut, duration, fadeIn, fadeOut, relStart, trackOffset}
 let contextMenuEl = null, contextMenuOverlay = null;
 const LONG_PRESS_MS = 550;
 const MOVE_THRESHOLD = 6;
@@ -671,6 +674,76 @@ function renderTimeSelectionOverlay() {
 }
 const lanesContainer = document.getElementById('lanesContainer');
 const timelineInner = document.getElementById('timelineInner');
+const lassoOverlay = document.createElement('div');
+lassoOverlay.id = 'lassoOverlay';
+lassoOverlay.style.cssText = 'position:absolute; border:1px dashed #6ec6ff; background:rgba(110,198,255,0.15); pointer-events:none; z-index:7; display:none;';
+timelineInner.appendChild(lassoOverlay);
+function updateLassoRect(curX, curY) {
+  const rect = timelineInner.getBoundingClientRect();
+  const x1 = Math.min(lassoState.startX, curX) - rect.left;
+  const x2 = Math.max(lassoState.startX, curX) - rect.left;
+  const y1 = Math.min(lassoState.startY, curY) - rect.top;
+  const y2 = Math.max(lassoState.startY, curY) - rect.top;
+  lassoOverlay.style.display = 'block';
+  lassoOverlay.style.left = x1+'px';
+  lassoOverlay.style.top = y1+'px';
+  lassoOverlay.style.width = (x2-x1)+'px';
+  lassoOverlay.style.height = (y2-y1)+'px';
+  lassoState.rect = { x1, y1, x2, y2 };
+}
+function finalizeLasso() {
+  lassoOverlay.style.display = 'none';
+  if (!lassoState || !lassoState.rect) return;
+  const { x1, y1, x2, y2 } = lassoState.rect;
+  const newSelected = new Set();
+  tracks.forEach((t, idx) => {
+    const rowTop = idx * ROW_H_JS, rowBottom = rowTop + ROW_H_JS;
+    if (rowBottom < y1 || rowTop > y2) return;
+    t.clips.forEach(c => {
+      const cLeft = c.start*PPS, cRight = cLeft + Math.max(c.duration*PPS, 28);
+      if (cRight < x1 || cLeft > x2) return;
+      newSelected.add(c.id);
+    });
+  });
+  lassoSelectedIds = newSelected;
+  touchSelectedClipId = null;
+  renderLanes();
+}
+function collectLassoClipRefs() {
+  const refs = [];
+  tracks.forEach(t => t.clips.forEach(c => { if (lassoSelectedIds.has(c.id)) refs.push({ trackId:t.id, clip:c }); }));
+  return refs;
+}
+function copyClipsToClipboard(clipRefs) {
+  if (!clipRefs.length) return;
+  const trackIds = tracks.map(t=>t.id);
+  const trackIndexOf = id => trackIds.indexOf(id);
+  const minStart = Math.min(...clipRefs.map(r=>r.clip.start));
+  const refTrackIndex = trackIndexOf(clipRefs[0].trackId);
+  clipboard = clipRefs.map(r => ({
+    assetId: r.clip.assetId, trimIn: r.clip.trimIn, trimOut: r.clip.trimOut, duration: r.clip.duration,
+    fadeIn: r.clip.fadeIn||0, fadeOut: r.clip.fadeOut||0,
+    relStart: r.clip.start - minStart,
+    trackOffset: trackIndexOf(r.trackId) - refTrackIndex
+  }));
+}
+function cutLassoSelection() {
+  const refs = collectLassoClipRefs();
+  if (!refs.length) return;
+  copyClipsToClipboard(refs);
+  pushUndoSnapshot();
+  const ids = new Set(refs.map(r=>r.clip.id));
+  tracks.forEach(t => { t.clips = t.clips.filter(c => !ids.has(c.id)); });
+  lassoSelectedIds = new Set();
+  saveProject();
+  renderAll();
+}
+function showLassoActionMenu(x, y) {
+  showContextMenu(x, y, [
+    { label:'Copy', action: () => copyClipsToClipboard(collectLassoClipRefs()) },
+    { label:'Cut', action: () => cutLassoSelection() }
+  ]);
+}
 const timelineOuter = document.getElementById('timelineOuter');
 timelineOuter.addEventListener('scroll', () => {
   ruler.style.transform = 'translateX(' + (-timelineOuter.scrollLeft) + 'px)';
@@ -1098,8 +1171,8 @@ function showClipContextMenu(trackId, clipId, x, y) {
   const clip = t && t.clips.find(c=>c.id===clipId);
   if (!clip) return;
   showContextMenu(x, y, [
-    { label:'Cut', action: () => { clipboard = { assetId:clip.assetId, trimIn:clip.trimIn, trimOut:clip.trimOut, duration:clip.duration }; deleteClip(trackId, clipId); } },
-    { label:'Copy', action: () => { clipboard = { assetId:clip.assetId, trimIn:clip.trimIn, trimOut:clip.trimOut, duration:clip.duration }; } },
+    { label:'Cut', action: () => { copyClipsToClipboard([{trackId, clip}]); deleteClip(trackId, clipId); } },
+    { label:'Copy', action: () => { copyClipsToClipboard([{trackId, clip}]); } },
     { label:'Split at playhead', action: () => splitClipAtPlayhead(trackId, clipId) },
     { label:'Trim', action: () => { activeEditClipId = clip.id; activeEditType = 'trim'; renderLanes(); } },
     { label:'Fade', action: () => { activeEditClipId = clip.id; activeEditType = 'fade'; renderLanes(); } },
@@ -1107,7 +1180,7 @@ function showClipContextMenu(trackId, clipId, x, y) {
   ]);
 }
 function showPasteMenu(trackId, posSec, x, y) {
-  if (!clipboard) return;
+  if (!clipboard || !clipboard.length) return;
   showContextMenu(x, y, [ { label:'Paste', action: () => pasteAtPosition(trackId, posSec) } ]);
 }
 
@@ -1139,21 +1212,27 @@ function splitClipAtPlayhead(trackId, clipId) {
   saveProject();
   renderAll();
 }
-function pasteAtPosition(trackId, posSec) {
-  if (!clipboard) return;
-  const t = tracks.find(t=>t.id===trackId);
-  if (!t) return;
-  const asset = getAsset(clipboard.assetId);
-  if (!asset) { showNotice('That recording is no longer in this project.'); return; }
+function pasteAtPosition(targetTrackId, posSec) {
+  if (!clipboard || !clipboard.length) return;
+  const trackIds = tracks.map(t=>t.id);
+  const targetIndex = trackIds.indexOf(targetTrackId);
+  if (targetIndex < 0) return;
   pushUndoSnapshot();
-  const newStart = Math.max(0, posSec), newEnd = newStart + clipboard.duration;
-  const { toRemove, toAdd } = resolveOverlaps(t.clips, newStart, newEnd, null);
-  t.clips = t.clips.filter(c => !toRemove.includes(c.id));
-  t.clips.push(...toAdd);
-  const visible = sliceAudioBuffer(asset.buffer, clipboard.trimIn, clipboard.trimOut);
-  t.clips.push({ id:genId(), assetId:clipboard.assetId, start:newStart, duration:clipboard.duration,
-    trimIn:clipboard.trimIn, trimOut:clipboard.trimOut, fadeIn:0, fadeOut:0,
-    waveformUrl: makeWaveformUrl(visible, Math.max(clipboard.duration*PPS,28), ROW_H_JS-16) });
+  clipboard.forEach(item => {
+    const destIndex = targetIndex + item.trackOffset;
+    if (destIndex < 0 || destIndex >= tracks.length) return;
+    const destTrack = tracks[destIndex];
+    const asset = getAsset(item.assetId);
+    if (!asset) return;
+    const newStart = Math.max(0, posSec + item.relStart), newEnd = newStart + item.duration;
+    const { toRemove, toAdd } = resolveOverlaps(destTrack.clips, newStart, newEnd, null);
+    destTrack.clips = destTrack.clips.filter(c => !toRemove.includes(c.id));
+    destTrack.clips.push(...toAdd);
+    const visible = sliceAudioBuffer(asset.buffer, item.trimIn, item.trimOut);
+    destTrack.clips.push({ id:genId(), assetId:item.assetId, start:newStart, duration:item.duration,
+      trimIn:item.trimIn, trimOut:item.trimOut, fadeIn:item.fadeIn||0, fadeOut:item.fadeOut||0,
+      waveformUrl: makeWaveformUrl(visible, Math.max(item.duration*PPS,28), ROW_H_JS-16) });
+  });
   saveProject();
   renderAll();
 }
@@ -1268,6 +1347,7 @@ ruler.addEventListener('pointerdown', (e) => {
   if (timeSelectionMode) { onSelectionPointerDown(e); return; }
   closeContextMenu(); exitEditMode();
   if (touchSelectedClipId) { touchSelectedClipId = null; renderLanes(); }
+  if (lassoSelectedIds.size > 0) { lassoSelectedIds = new Set(); renderLanes(); }
   onScrubStart(e);
 });
 window.addEventListener('pointermove', onScrubMove);
@@ -1280,16 +1360,13 @@ function onClipPointerDown(e, trackId, clip) {
   if (activeEditClipId && activeEditClipId !== clip.id) exitEditMode();
   clipPress = { trackId, clipId: clip.id, startX:e.clientX, startY:e.clientY, moved:false };
 }
+let emptyTapState = null; // {trackId, x, lastTime}
+const DOUBLE_TAP_MS = 400;
 function onEmptyLanePointerDown(e, trackId) {
   if (timeSelectionMode) { onSelectionPointerDown(e); return; }
   closeContextMenu();
   exitEditMode();
-  emptyPress = { trackId, startX:e.clientX, startY:e.clientY, moved:false, longPressFired:false };
-  emptyPress.timer = setTimeout(() => {
-    if (!emptyPress || emptyPress.moved) return;
-    emptyPress.longPressFired = true;
-    if (clipboard) showPasteMenu(emptyPress.trackId, xToSec(emptyPress.startX), emptyPress.startX, emptyPress.startY);
-  }, LONG_PRESS_MS);
+  emptyPress = { trackId, startX:e.clientX, startY:e.clientY, moved:false };
 }
 window.addEventListener('pointermove', (e) => {
   if (clipPress && !clipPress.moved) {
@@ -1311,29 +1388,44 @@ window.addEventListener('pointermove', (e) => {
     const dx = e.clientX-emptyPress.startX, dy = e.clientY-emptyPress.startY;
     if (Math.hypot(dx,dy) > MOVE_THRESHOLD) {
       emptyPress.moved = true;
-      clearTimeout(emptyPress.timer);
-      // no scrub-start here: dragging empty track space no longer moves the playhead,
-      // this just lets the browser's native horizontal scroll take over
+      lassoState = { startX: emptyPress.startX, startY: emptyPress.startY };
+      updateLassoRect(e.clientX, e.clientY);
     }
   }
+  if (lassoState) updateLassoRect(e.clientX, e.clientY);
 });
 window.addEventListener('pointerup', () => {
   if (clipPress) {
     if (!clipPress.moved) {
-      if (touchSelectedClipId === clipPress.clipId) {
-        showClipContextMenu(clipPress.trackId, clipPress.clipId, clipPress.startX, clipPress.startY);
+      if (lassoSelectedIds.size > 0 && lassoSelectedIds.has(clipPress.clipId)) {
+        showLassoActionMenu(clipPress.startX, clipPress.startY);
       } else {
-        touchSelectedClipId = clipPress.clipId;
-        renderLanes();
+        if (lassoSelectedIds.size > 0) { lassoSelectedIds = new Set(); renderLanes(); }
+        if (touchSelectedClipId === clipPress.clipId) {
+          showClipContextMenu(clipPress.trackId, clipPress.clipId, clipPress.startX, clipPress.startY);
+        } else {
+          touchSelectedClipId = clipPress.clipId;
+          renderLanes();
+        }
       }
     }
     clipPress = null;
   }
   if (emptyPress) {
-    clearTimeout(emptyPress.timer);
-    if (!emptyPress.moved && !emptyPress.longPressFired && touchSelectedClipId) {
-      touchSelectedClipId = null;
-      renderLanes();
+    if (lassoState) {
+      finalizeLasso();
+      lassoState = null;
+    } else if (!emptyPress.moved) {
+      if (lassoSelectedIds.size > 0) { lassoSelectedIds = new Set(); renderLanes(); }
+      if (touchSelectedClipId) { touchSelectedClipId = null; renderLanes(); }
+      const now = Date.now();
+      if (emptyTapState && emptyTapState.trackId === emptyPress.trackId &&
+          Math.abs(emptyTapState.x - emptyPress.startX) < 30 && (now - emptyTapState.lastTime) < DOUBLE_TAP_MS) {
+        if (clipboard) showPasteMenu(emptyPress.trackId, xToSec(emptyPress.startX), emptyPress.startX, emptyPress.startY);
+        emptyTapState = null;
+      } else {
+        emptyTapState = { trackId: emptyPress.trackId, x: emptyPress.startX, lastTime: now };
+      }
     }
     emptyPress = null;
   }
@@ -1500,9 +1592,10 @@ function renderLanes() {
     t.clips.forEach((c, idx) => {
       const isTrimActive = activeEditClipId === c.id && activeEditType === 'trim';
       const isFadeActive = activeEditClipId === c.id && activeEditType === 'fade';
-      const isTouchSelected = touchSelectedClipId === c.id && !isTrimActive && !isFadeActive;
+      const isLassoSelected = lassoSelectedIds.has(c.id);
+      const isTouchSelected = touchSelectedClipId === c.id && !isTrimActive && !isFadeActive && !isLassoSelected;
       const block = document.createElement('div');
-      block.className = 'clip-block' + (dragState && dragState.id===c.id?' dragging':'') + ((isTrimActive||isFadeActive)?' fade-active':'') + (isTouchSelected?' touch-selected':'');
+      block.className = 'clip-block' + (dragState && dragState.id===c.id?' dragging':'') + ((isTrimActive||isFadeActive)?' fade-active':'') + (isTouchSelected?' touch-selected':'') + (isLassoSelected?' lasso-selected':'');
       block.style.left = (c.start*PPS)+'px';
       block.style.width = Math.max(c.duration*PPS, 28)+'px';
       block.title = 'Clip '+(idx+1)+' — '+fmt(c.duration);
