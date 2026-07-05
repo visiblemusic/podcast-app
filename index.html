@@ -78,7 +78,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v3.2</span></h1>
+  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v3.3</span></h1>
   <p class="sub">multi-track recorder — arm a track, record, mix</p>
   <div class="notice" id="notice"></div>
 
@@ -344,10 +344,16 @@ async function startRecording() {
   recordBtn.classList.add('recording'); recordBtn.textContent='■';
   playBtn.disabled = true;
   statusEl.textContent = 'recording onto "' + target.name + '"';
+  renderLanes();
   elapsedInterval = setInterval(() => {
     elapsed = (Date.now()-recordStartTime)/1000;
     timerEl.textContent = fmt(elapsed);
-    renderLanes();
+    const neededTicks = Math.ceil(totalDurationNow());
+    if (neededTicks > lastRenderedTickCount || !liveBlockEl) {
+      renderLanes();
+    } else {
+      liveBlockEl.style.width = Math.max(elapsed*PPS, 4)+'px';
+    }
   }, 50);
 }
 function stopRecording() {
@@ -462,6 +468,8 @@ window.addEventListener('pointerup', () => {
 });
 
 /* ---------- Rendering ---------- */
+let liveBlockEl = null;
+let lastRenderedTickCount = -1;
 function renderPlayheadPosition() { playheadEl.style.left = (playheadPos*PPS)+'px'; }
 
 function totalDurationNow() {
@@ -472,6 +480,7 @@ function totalDurationNow() {
 function renderRuler() {
   const totalDuration = totalDurationNow();
   const tickCount = Math.ceil(totalDuration);
+  lastRenderedTickCount = tickCount;
   const width = totalDuration*PPS + 40;
   timelineInner.style.width = width+'px';
   timelineInner.style.minWidth = '100%';
@@ -490,6 +499,7 @@ function renderRuler() {
 function renderLanes() {
   renderRuler();
   lanesContainer.innerHTML = '';
+  liveBlockEl = null;
   tracks.forEach(t => {
     const lane = document.createElement('div');
     lane.className = 'track-lane';
@@ -522,6 +532,7 @@ function renderLanes() {
         live.style.left = (takeStartPos*PPS)+'px';
         live.style.width = Math.max(elapsed*PPS, 4)+'px';
         lane.appendChild(live);
+        liveBlockEl = live;
       }
     }
     lanesContainer.appendChild(lane);
