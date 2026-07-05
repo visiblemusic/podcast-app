@@ -65,10 +65,18 @@
   .empty-hint { font-size:11px; color:#514c40; position:absolute; left:8px; top:50%; transform:translateY(-50%); }
   .clip-block { position:absolute; top:8px; height:calc(var(--row-h) - 16px); border-radius:6px; background:var(--teal);
     border:1px solid #3d5b58; color:var(--teal-light); display:flex; align-items:center; gap:4px;
-    padding:0 6px; cursor:grab; font-size:10px; overflow:hidden; white-space:nowrap; touch-action:none; }
+    padding:0 6px; cursor:grab; font-size:10px; white-space:nowrap; touch-action:none; }
   .clip-block.dragging { opacity:.85; z-index:5; box-shadow:0 2px 8px rgba(0,0,0,.5); }
-  .clip-del { position:absolute; top:1px; right:1px; width:16px; height:16px; border-radius:50%;
-    background:rgba(0,0,0,.4); color:#fff; font-size:9px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .clip-block.selected { border:2px solid #f4d03f; box-shadow:0 0 0 2px rgba(244,208,63,0.35); z-index:4; }
+  .trim-handle { position:absolute; top:0; bottom:0; width:12px; cursor:ew-resize;
+    background:rgba(244,208,63,0.55); touch-action:none; }
+  .trim-handle.left { left:0; border-radius:6px 0 0 6px; }
+  .trim-handle.right { right:0; border-radius:0 6px 6px 0; }
+  .clip-menu { position:absolute; bottom:calc(100% + 4px); left:50%; transform:translateX(-50%);
+    background:#2a2721; border:1px solid #f4d03f; border-radius:6px; padding:4px; display:flex; gap:4px;
+    white-space:nowrap; z-index:10; box-shadow:0 2px 8px rgba(0,0,0,.5); }
+  .clip-menu button { background:var(--red); color:var(--text); border:none; border-radius:4px;
+    font-size:11px; padding:5px 10px; cursor:pointer; }
   .live-block { position:absolute; top:8px; height:calc(var(--row-h) - 16px); border-radius:6px; background:var(--red-dim); border:1px solid var(--red); }
   .playhead { position:absolute; top:0; bottom:0; width:14px; margin-left:-7px; z-index:6; touch-action:none; cursor:ew-resize; }
   .playhead .line { position:absolute; left:6px; top:0; bottom:0; width:2px; background:var(--amber); }
@@ -77,7 +85,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v3.7</span></h1>
+  <h1>Tape <span id="versionTag" style="color:var(--dim); font-size:11px; letter-spacing:0;">v4</span></h1>
   <p class="sub">multi-track recorder — arm a track, record, mix</p>
   <div class="notice" id="notice"></div>
 
@@ -132,6 +140,8 @@ let tracks = []; // {id, name, volume, muted, soloed, armed, gainNode, clips:[{i
 let playheadPos = 0;
 let playing = false, activeSources = [], playRAF = null, playStartCtxTime = 0, playStartPlayhead = 0;
 let dragState = null;
+let selectedClipId = null;
+let trimDragState = null;
 let scrubbing = false;
 
 const recordBtn = document.getElementById('recordBtn');
@@ -288,10 +298,11 @@ function sliceAudioBuffer(buffer, startSec, endSec) {
 function makeTrimmedClip(original, sliceStartSec, sliceEndSec, newAbsStart) {
   const dur = sliceEndSec - sliceStartSec;
   if (dur < MIN_CLIP_DUR) return null;
-  const buffer = sliceAudioBuffer(original.buffer, sliceStartSec, sliceEndSec);
-  const rowH = 78 - 16;
-  return { id: genId(), start:newAbsStart, duration:dur, buffer, blob: audioBufferToWavBlob(buffer),
-    waveformUrl: makeWaveformUrl(buffer, Math.max(dur*PPS, 28), rowH) };
+  const bufStart = (original.trimIn||0) + sliceStartSec;
+  const bufEnd = (original.trimIn||0) + sliceEndSec;
+  const buffer = sliceAudioBuffer(original.buffer, bufStart, bufEnd);
+  return { id: genId(), start:newAbsStart, duration:dur, buffer, trimIn:0, trimOut:dur,
+    blob: audioBufferToWavBlob(buffer), waveformUrl: makeWaveformUrl(buffer, Math.max(dur*PPS, 28), 78-16) };
 }
 function resolveOverlaps(trackClips, newStart, newEnd, excludeId) {
   const toRemove=[], toAdd=[];
@@ -398,6 +409,7 @@ async function startRecording() {
       trk.clips = trk.clips.filter(c => !toRemove.includes(c.id));
       trk.clips.push(...toAdd);
       trk.clips.push({ id:genId(), start:newStart, duration:decoded.duration, buffer:decoded, blob:rawBlob,
+        trimIn:0, trimOut:decoded.duration,
         waveformUrl: makeWaveformUrl(decoded, Math.max(decoded.duration*PPS, 28), 78-16) });
       playheadPos = newEnd;
       saveProject();
@@ -448,8 +460,11 @@ function play() {
       const src = ctx.createBufferSource();
       src.buffer = c.buffer;
       src.connect(t.gainNode);
-      if (c.start >= playheadPos) src.start(playStartCtxTime + (c.start-playheadPos));
-      else src.start(playStartCtxTime, playheadPos-c.start);
+      if (c.start >= playheadPos) src.start(playStartCtxTime + (c.start-playheadPos), c.trimIn, c.duration);
+      else {
+        const into = playheadPos - c.start;
+        src.start(playStartCtxTime, c.trimIn+into, c.duration-into);
+      }
       activeSources.push(src);
     }
   }
@@ -491,14 +506,65 @@ function xToSec(clientX) {
 function onScrubStart(e) { scrubbing=true; playheadPos = xToSec(e.clientX); renderPlayheadPosition(); e.preventDefault(); }
 function onScrubMove(e) { if (!scrubbing) return; playheadPos = xToSec(e.clientX); renderPlayheadPosition(); }
 function onScrubEnd() { scrubbing=false; }
-ruler.addEventListener('pointerdown', onScrubStart);
+function deselectClip(e) {
+  if (selectedClipId) { selectedClipId = null; renderLanes(); }
+}
+ruler.addEventListener('pointerdown', (e) => { deselectClip(); onScrubStart(e); });
 window.addEventListener('pointermove', onScrubMove);
 window.addEventListener('pointerup', onScrubEnd);
 
 function startClipDrag(e, trackId, clip) {
   e.stopPropagation();
+  if (selectedClipId !== clip.id) {
+    selectedClipId = clip.id;
+    renderLanes();
+    return; // this tap only selects; a fresh press-and-drag moves it
+  }
   dragState = { trackId, id:clip.id, startX:e.clientX, origStart:clip.start, moved:false };
 }
+function startTrimDrag(e, trackId, clip, edge) {
+  e.stopPropagation();
+  trimDragState = {
+    trackId, id: clip.id, edge, startX: e.clientX,
+    origTrimIn: clip.trimIn, origTrimOut: clip.trimOut, origStart: clip.start
+  };
+}
+window.addEventListener('pointermove', (e) => {
+  if (!trimDragState) return;
+  const dx = e.clientX - trimDragState.startX;
+  const deltaSec = dx / PPS;
+  const t = tracks.find(t=>t.id===trimDragState.trackId);
+  const clip = t && t.clips.find(c=>c.id===trimDragState.id);
+  if (!clip) return;
+  if (trimDragState.edge === 'left') {
+    let newTrimIn = trimDragState.origTrimIn + deltaSec;
+    newTrimIn = Math.max(0, Math.min(newTrimIn, trimDragState.origTrimOut - MIN_CLIP_DUR));
+    clip.trimIn = newTrimIn;
+    clip.start = Math.max(0, trimDragState.origStart + (newTrimIn - trimDragState.origTrimIn));
+    clip.duration = clip.trimOut - clip.trimIn;
+  } else {
+    let newTrimOut = trimDragState.origTrimOut + deltaSec;
+    newTrimOut = Math.min(clip.buffer.duration, Math.max(newTrimOut, trimDragState.origTrimIn + MIN_CLIP_DUR));
+    clip.trimOut = newTrimOut;
+    clip.duration = clip.trimOut - clip.trimIn;
+  }
+  renderLanes();
+});
+window.addEventListener('pointerup', () => {
+  if (!trimDragState) return;
+  const t = tracks.find(t=>t.id===trimDragState.trackId);
+  const clip = t && t.clips.find(c=>c.id===trimDragState.id);
+  trimDragState = null;
+  if (!clip || !t) return;
+  const visible = sliceAudioBuffer(clip.buffer, clip.trimIn, clip.trimOut);
+  clip.waveformUrl = makeWaveformUrl(visible, Math.max(clip.duration*PPS, 28), 78-16);
+  const newStart = clip.start, newEnd = newStart + clip.duration;
+  const { toRemove, toAdd } = resolveOverlaps(t.clips, newStart, newEnd, clip.id);
+  t.clips = t.clips.filter(c => !toRemove.includes(c.id));
+  t.clips.push(...toAdd);
+  saveProject();
+  renderAll();
+});
 window.addEventListener('pointermove', (e) => {
   if (!dragState) return;
   const dx = e.clientX - dragState.startX;
@@ -562,15 +628,16 @@ function renderLanes() {
   tracks.forEach(t => {
     const lane = document.createElement('div');
     lane.className = 'track-lane';
-    lane.addEventListener('pointerdown', (e) => { if (e.target===lane) onScrubStart(e); });
+    lane.addEventListener('pointerdown', (e) => { if (e.target===lane) { deselectClip(); onScrubStart(e); } });
     if (t.clips.length===0 && !(isRecording && armedTrack() && armedTrack().id===t.id)) {
       const hint = document.createElement('span');
       hint.className='empty-hint'; hint.textContent='empty';
       lane.appendChild(hint);
     }
     t.clips.forEach((c, idx) => {
+      const isSelected = selectedClipId === c.id;
       const block = document.createElement('div');
-      block.className = 'clip-block' + (dragState && dragState.id===c.id?' dragging':'');
+      block.className = 'clip-block' + (dragState && dragState.id===c.id?' dragging':'') + (isSelected?' selected':'');
       block.style.left = (c.start*PPS)+'px';
       block.style.width = Math.max(c.duration*PPS, 28)+'px';
       block.title = 'Clip '+(idx+1)+' — '+fmt(c.duration);
@@ -585,11 +652,24 @@ function renderLanes() {
       numLabel.textContent = idx+1;
       block.appendChild(numLabel);
       block.addEventListener('pointerdown', (e) => startClipDrag(e, t.id, c));
-      const del = document.createElement('div');
-      del.className='clip-del'; del.textContent='✕';
-      del.addEventListener('pointerdown', (e) => e.stopPropagation());
-      del.addEventListener('click', (e) => { e.stopPropagation(); deleteClip(t.id, c.id); });
-      block.appendChild(del);
+      if (isSelected) {
+        const leftHandle = document.createElement('div');
+        leftHandle.className = 'trim-handle left';
+        leftHandle.addEventListener('pointerdown', (e) => startTrimDrag(e, t.id, c, 'left'));
+        block.appendChild(leftHandle);
+        const rightHandle = document.createElement('div');
+        rightHandle.className = 'trim-handle right';
+        rightHandle.addEventListener('pointerdown', (e) => startTrimDrag(e, t.id, c, 'right'));
+        block.appendChild(rightHandle);
+        const menu = document.createElement('div');
+        menu.className = 'clip-menu';
+        const delBtn = document.createElement('button');
+        delBtn.textContent = 'Delete';
+        delBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+        delBtn.addEventListener('click', (e) => { e.stopPropagation(); deleteClip(t.id, c.id); });
+        menu.appendChild(delBtn);
+        block.appendChild(menu);
+      }
       lane.appendChild(block);
     });
     if (isRecording) {
@@ -667,7 +747,8 @@ function saveProject() {
       const serialTracks = await Promise.all(tracks.map(async t => ({
         id:t.id, name:t.name, volume:t.volume, muted:t.muted, soloed:t.soloed, armed:t.armed,
         clips: await Promise.all(t.clips.map(async c => ({
-          id:c.id, start:c.start, duration:c.duration, mimeType:c.blob.type, data: await c.blob.arrayBuffer()
+          id:c.id, start:c.start, duration:c.duration, trimIn:c.trimIn, trimOut:c.trimOut,
+          mimeType:c.blob.type, data: await c.blob.arrayBuffer()
         })))
       })));
       const tx = db.transaction(STORE,'readwrite');
@@ -693,8 +774,11 @@ async function loadProject() {
       for (const sc of st.clips) {
         const blob = new Blob([sc.data], { type: sc.mimeType });
         const buffer = await ctx.decodeAudioData(sc.data.slice(0));
-        track.clips.push({ id:sc.id, start:sc.start, duration:sc.duration, buffer, blob,
-          waveformUrl: makeWaveformUrl(buffer, Math.max(sc.duration*PPS, 28), 78-16) });
+        const trimIn = typeof sc.trimIn === 'number' ? sc.trimIn : 0;
+        const trimOut = typeof sc.trimOut === 'number' ? sc.trimOut : sc.duration;
+        const visible = sliceAudioBuffer(buffer, trimIn, trimOut);
+        track.clips.push({ id:sc.id, start:sc.start, duration:sc.duration, buffer, blob, trimIn, trimOut,
+          waveformUrl: makeWaveformUrl(visible, Math.max(sc.duration*PPS, 28), 78-16) });
       }
       tracks.push(track);
     }
