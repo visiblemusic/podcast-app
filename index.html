@@ -83,6 +83,7 @@
     padding:0 6px; cursor:grab; font-size:10px; white-space:nowrap; touch-action:none; }
   .clip-block.dragging { opacity:.85; z-index:5; box-shadow:0 2px 8px rgba(0,0,0,.5); }
   .clip-block.fade-active { border:2px solid #f4d03f; box-shadow:0 0 0 2px rgba(244,208,63,0.35); z-index:4; }
+  .clip-block.touch-selected { border:2px solid orange; box-shadow:0 0 0 2px rgba(255,165,0,0.35); z-index:4; }
   .trim-handle { position:absolute; top:0; bottom:0; width:24px; cursor:ew-resize;
     background:rgba(244,208,63,0.55); touch-action:none; z-index:6; }
   .trim-handle.left { left:0; border-radius:6px 0 0 6px; }
@@ -109,7 +110,7 @@
     <div class="notice" id="notice"></div>
 
     <div class="transport" style="flex-wrap:wrap;">
-      <div class="tape-title-block"><div class="tape-title">Tape</div><div class="tape-version" id="versionTag">v10.1</div></div>
+      <div class="tape-title-block"><div class="tape-title">Tape</div><div class="tape-version" id="versionTag">v10.2</div></div>
       <button id="toStartBtn" class="tbtn" style="font-size:16px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back to start">|◀</button>
       <button id="skipBackBtn" class="tbtn" style="font-size:12px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back 10 seconds">-10s</button>
       <button id="recordBtn" class="tbtn" aria-label="Record">●</button>
@@ -129,8 +130,8 @@
         <button id="followBtn" style="font-size:13px; padding:8px 14px; border-radius:8px; border:1px solid var(--amber); background:var(--amber); color:#1c1a17; text-transform:uppercase; letter-spacing:.03em;">Follow</button>
         <button id="timeSelectionBtn" style="font-size:12px; padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text); text-transform:uppercase; letter-spacing:.03em;">Time Selection</button>
         <div class="v-divider"></div>
-        <button id="zoomOutBtn" style="padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text); display:flex; align-items:center;"><svg width="14" height="14" viewBox="0 0 24 24"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="2.5" fill="none"/><line x1="15" y1="15" x2="21" y2="21" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
-        <button id="zoomInBtn" style="padding:6px 12px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text); display:flex; align-items:center;"><svg width="24" height="24" viewBox="0 0 24 24"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="2.5" fill="none"/><line x1="15" y1="15" x2="21" y2="21" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
+        <button id="zoomOutBtn" style="width:44px; height:44px; padding:0; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text); display:flex; align-items:center; justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="2.5" fill="none"/><line x1="15" y1="15" x2="21" y2="21" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
+        <button id="zoomInBtn" style="width:44px; height:44px; padding:0; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text); display:flex; align-items:center; justify-content:center;"><svg width="24" height="24" viewBox="0 0 24 24"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="2.5" fill="none"/><line x1="15" y1="15" x2="21" y2="21" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>
         <div class="v-divider"></div>
         <button id="addTrackBtn" style="font-size:14px; padding:8px 14px;">+ Add track</button>
       </div>
@@ -188,6 +189,7 @@ let playheadPos = 0;
 let playing = false, activeSources = [], playRAF = null, playStartCtxTime = 0, playStartPlayhead = 0;
 let dragState = null;
 let activeEditClipId = null; // clip currently showing draggable handles
+let touchSelectedClipId = null; // clip currently shown with a plain selection border
 let activeEditType = null; // 'trim' | 'fade'
 let clipPress = null; // long-press/tap tracking on a clip body
 let emptyPress = null; // long-press/tap tracking on empty lane space
@@ -226,6 +228,7 @@ function applySnapshot(snap) {
   });
   applyTrackGains();
   if (activeEditClipId && !tracks.some(t => t.clips.some(c => c.id === activeEditClipId))) { activeEditClipId = null; activeEditType = null; }
+  if (touchSelectedClipId && !tracks.some(t => t.clips.some(c => c.id === touchSelectedClipId))) touchSelectedClipId = null;
 }
 function undo() {
   if (!undoStack.length) return;
@@ -432,7 +435,7 @@ async function importProjectFile(file) {
     const newId = genId();
     const name = (data.projectName || 'Imported Project') + ' (imported)';
     projectList.push({ id:newId, name });
-    tracks = []; activeEditClipId=null; activeEditType=null; undoStack=[]; redoStack=[]; projectAssets = [];
+    tracks = []; activeEditClipId=null; activeEditType=null; touchSelectedClipId=null; undoStack=[]; redoStack=[]; projectAssets = [];
     activeProjectId = newId;
     const ctx = ensureAudioCtx();
     const isOldFormat = !data.assets;
@@ -487,24 +490,59 @@ async function importProjectFile(file) {
   }
 }
 function showProjectMenu() {
+  closeContextMenu();
   const rect = projectMenuBtn.getBoundingClientRect();
-  const items = projectList.map(p => ({
-    label: (p.id === activeProjectId ? '● ' : '') + p.name,
-    action: () => switchProject(p.id)
-  }));
-  items.push({ label: '+ New Project', action: () => createProject() });
-  items.push({ label: 'Rename', action: () => {
+  contextMenuOverlay = document.createElement('div');
+  contextMenuOverlay.style.cssText = 'position:fixed; inset:0; z-index:40;';
+  contextMenuOverlay.addEventListener('pointerdown', closeContextMenu);
+  document.body.appendChild(contextMenuOverlay);
+
+  contextMenuEl = document.createElement('div');
+  contextMenuEl.style.cssText = 'position:fixed; left:'+rect.left+'px; top:'+(rect.bottom+6)+'px;'+
+    'background:#2a2721; border:1px solid #f4d03f; border-radius:8px; padding:10px; display:flex; gap:16px;'+
+    'max-height:70vh; max-width:90vw; overflow-y:auto; z-index:41; box-shadow:0 4px 14px rgba(0,0,0,.6);';
+
+  function makeColumn(title) {
+    const col = document.createElement('div');
+    col.style.cssText = 'display:flex; flex-direction:column; gap:4px; min-width:130px;';
+    const heading = document.createElement('div');
+    heading.textContent = title;
+    heading.style.cssText = 'font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:var(--dim); margin-bottom:2px;';
+    col.appendChild(heading);
+    return col;
+  }
+  function makeMenuBtn(label, danger, action) {
+    const btn = document.createElement('button');
+    btn.textContent = label;
+    btn.style.cssText = 'background:'+(danger?'var(--red)':'var(--teal)')+'; color:'+(danger?'var(--text)':'var(--teal-light)')+
+      '; border:none; border-radius:5px; font-size:13px; padding:9px 14px; cursor:pointer; white-space:nowrap; text-align:left;';
+    btn.addEventListener('pointerdown', e=>e.stopPropagation());
+    btn.addEventListener('click', (e) => { e.stopPropagation(); closeContextMenu(); action(); });
+    return btn;
+  }
+
+  const projectsCol = makeColumn('Projects');
+  projectList.forEach(p => {
+    projectsCol.appendChild(makeMenuBtn((p.id === activeProjectId ? '● ' : '') + p.name, false, () => switchProject(p.id)));
+  });
+
+  const actionsCol = makeColumn('Actions');
+  actionsCol.appendChild(makeMenuBtn('+ New Project', false, () => createProject()));
+  actionsCol.appendChild(makeMenuBtn('Rename', false, () => {
     const p = projectList.find(p=>p.id===activeProjectId);
     const name = prompt('Project name', p ? p.name : '');
     if (name && name.trim()) renameProject(activeProjectId, name.trim());
-  }});
-  items.push({ label: '⬇ Export', action: () => exportProject() });
-  items.push({ label: '⬆ Import', action: () => importFileInput.click() });
-  items.push({ label: 'Delete project', danger:true, action: () => {
+  }));
+  actionsCol.appendChild(makeMenuBtn('⬇ Export', false, () => exportProject()));
+  actionsCol.appendChild(makeMenuBtn('⬆ Import', false, () => importFileInput.click()));
+  actionsCol.appendChild(makeMenuBtn('Delete project', true, () => {
     if (!confirm('Delete this project? This cannot be undone.')) return;
     deleteProject(activeProjectId);
-  }});
-  showContextMenu(rect.left, rect.bottom + 6, items, 'below');
+  }));
+
+  contextMenuEl.appendChild(projectsCol);
+  contextMenuEl.appendChild(actionsCol);
+  document.body.appendChild(contextMenuEl);
 }
 projectMenuBtn.addEventListener('click', showProjectMenu);
 importFileInput.addEventListener('change', (e) => {
@@ -925,11 +963,21 @@ function play() {
       const src = ctx.createBufferSource();
       src.buffer = asset.buffer;
       const fadeIn = c.fadeIn||0, fadeOut = c.fadeOut||0;
+      let startTime, startOffset, startDur;
+      if (c.start >= playheadPos) {
+        startTime = playStartCtxTime + (c.start-playheadPos);
+        startOffset = c.trimIn; startDur = c.duration;
+      } else {
+        const into = playheadPos - c.start;
+        startTime = playStartCtxTime; startOffset = c.trimIn+into; startDur = c.duration-into;
+      }
       if (fadeIn > 0 || fadeOut > 0) {
         const fadeGain = ctx.createGain();
         src.connect(fadeGain);
         fadeGain.connect(t.gainNode);
         src.onended = () => { try{fadeGain.disconnect();}catch(e){} try{src.disconnect();}catch(e){} };
+        src.start(startTime, startOffset, startDur);
+        fadeGain.gain.cancelScheduledValues(playStartCtxTime);
         const clipStartCtx = c.start >= playheadPos ? playStartCtxTime + (c.start - playheadPos) : playStartCtxTime;
         const clipEndCtx = playStartCtxTime + (c.start + c.duration - playheadPos);
         if (fadeIn > 0 && c.start >= playheadPos) {
@@ -945,11 +993,7 @@ function play() {
         }
       } else {
         src.connect(t.gainNode);
-      }
-      if (c.start >= playheadPos) src.start(playStartCtxTime + (c.start-playheadPos), c.trimIn, c.duration);
-      else {
-        const into = playheadPos - c.start;
-        src.start(playStartCtxTime, c.trimIn+into, c.duration-into);
+        src.start(startTime, startOffset, startDur);
       }
       activeSources.push(src);
     }
@@ -986,6 +1030,7 @@ function deleteClip(trackId, clipId) {
   const t = tracks.find(t=>t.id===trackId);
   t.clips = t.clips.filter(c=>c.id!==clipId);
   if (activeEditClipId === clipId) { activeEditClipId = null; activeEditType = null; }
+  if (touchSelectedClipId === clipId) touchSelectedClipId = null;
   saveProject();
   renderAll();
 }
@@ -1004,7 +1049,7 @@ function showContextMenu(x, y, items, align) {
   contextMenuEl = document.createElement('div');
   const transform = align === 'below' ? 'translate(0, 0)' : 'translate(-50%,-110%)';
   contextMenuEl.style.cssText = 'position:fixed; left:'+x+'px; top:'+y+'px; transform:'+transform+'; max-height:70vh; overflow-y:auto;'+
-    'background:#2a2721; border:1px solid #f4d03f; border-radius:8px; padding:6px; display:flex; flex-direction:column; gap:4px; z-index:41; box-shadow:0 4px 14px rgba(0,0,0,.6);';
+    'background:#2a2721; border:1px solid #f4d03f; border-radius:8px; padding:6px; display:flex; flex-direction:row; flex-wrap:wrap; gap:4px; max-width:90vw; z-index:41; box-shadow:0 4px 14px rgba(0,0,0,.6);';
   items.forEach(item => {
     const btn = document.createElement('button');
     btn.textContent = item.label;
@@ -1058,6 +1103,7 @@ function splitClipAtPlayhead(trackId, clipId) {
     fadeIn:0, fadeOut: clip.fadeOut||0, waveformUrl: makeWaveformUrl(rightVisible, Math.max(rightDur*PPS,28), ROW_H_JS-16) };
   t.clips = t.clips.filter(c=>c.id!==clipId).concat([left, right]);
   if (activeEditClipId === clipId) { activeEditClipId = null; activeEditType = null; }
+  if (touchSelectedClipId === clipId) touchSelectedClipId = null;
   saveProject();
   renderAll();
 }
@@ -1188,7 +1234,9 @@ function deleteSelectionContents(ripple) {
 }
 ruler.addEventListener('pointerdown', (e) => {
   if (timeSelectionMode) { onSelectionPointerDown(e); return; }
-  closeContextMenu(); exitEditMode(); onScrubStart(e);
+  closeContextMenu(); exitEditMode();
+  if (touchSelectedClipId) { touchSelectedClipId = null; renderLanes(); }
+  onScrubStart(e);
 });
 window.addEventListener('pointermove', onScrubMove);
 window.addEventListener('pointerup', onScrubEnd);
@@ -1222,11 +1270,14 @@ window.addEventListener('pointermove', (e) => {
     if (Math.hypot(dx,dy) > MOVE_THRESHOLD) {
       clipPress.moved = true;
       clearTimeout(clipPress.timer);
-      const t = tracks.find(t=>t.id===clipPress.trackId);
-      const clip = t && t.clips.find(c=>c.id===clipPress.clipId);
-      if (clip) {
-        pushUndoSnapshot();
-        dragState = { trackId:clipPress.trackId, id:clipPress.clipId, startX:clipPress.startX, origStart:clip.start, moved:true, snapped:true };
+      const isBeingEdited = activeEditClipId === clipPress.clipId && (activeEditType === 'trim' || activeEditType === 'fade');
+      if (!isBeingEdited) {
+        const t = tracks.find(t=>t.id===clipPress.trackId);
+        const clip = t && t.clips.find(c=>c.id===clipPress.clipId);
+        if (clip) {
+          pushUndoSnapshot();
+          dragState = { trackId:clipPress.trackId, id:clipPress.clipId, startX:clipPress.startX, origStart:clip.start, moved:true, snapped:true };
+        }
       }
     }
   }
@@ -1243,10 +1294,18 @@ window.addEventListener('pointermove', (e) => {
 window.addEventListener('pointerup', () => {
   if (clipPress) {
     clearTimeout(clipPress.timer);
+    if (!clipPress.moved && !clipPress.longPressFired) {
+      touchSelectedClipId = clipPress.clipId;
+      renderLanes();
+    }
     clipPress = null;
   }
   if (emptyPress) {
     clearTimeout(emptyPress.timer);
+    if (!emptyPress.moved && !emptyPress.longPressFired && touchSelectedClipId) {
+      touchSelectedClipId = null;
+      renderLanes();
+    }
     emptyPress = null;
   }
 });
@@ -1412,8 +1471,9 @@ function renderLanes() {
     t.clips.forEach((c, idx) => {
       const isTrimActive = activeEditClipId === c.id && activeEditType === 'trim';
       const isFadeActive = activeEditClipId === c.id && activeEditType === 'fade';
+      const isTouchSelected = touchSelectedClipId === c.id && !isTrimActive && !isFadeActive;
       const block = document.createElement('div');
-      block.className = 'clip-block' + (dragState && dragState.id===c.id?' dragging':'') + ((isTrimActive||isFadeActive)?' fade-active':'');
+      block.className = 'clip-block' + (dragState && dragState.id===c.id?' dragging':'') + ((isTrimActive||isFadeActive)?' fade-active':'') + (isTouchSelected?' touch-selected':'');
       block.style.left = (c.start*PPS)+'px';
       block.style.width = Math.max(c.duration*PPS, 28)+'px';
       block.title = 'Clip '+(idx+1)+' — '+fmt(c.duration);
@@ -1637,7 +1697,7 @@ async function switchProject(id) {
   await flushSaveNow();
   teardownCurrentTracks();
   tracks = [];
-  activeEditClipId = null; activeEditType = null; undoStack = []; redoStack = [];
+  activeEditClipId = null; activeEditType = null; touchSelectedClipId = null; undoStack = []; redoStack = [];
   activeProjectId = id;
   const db = await openDB();
   const rec = await getKey(db, 'proj:'+id) || { tracks: [], playheadPos: 0 };
@@ -1653,7 +1713,7 @@ async function createProject() {
   const id = genId();
   const name = 'Project ' + (projectList.length+1);
   projectList.push({id, name});
-  tracks = []; activeEditClipId=null; activeEditType=null; undoStack=[]; redoStack=[]; playheadPos=0; projectAssets = [];
+  tracks = []; activeEditClipId=null; activeEditType=null; touchSelectedClipId=null; undoStack=[]; redoStack=[]; playheadPos=0; projectAssets = [];
   activeProjectId = id;
   addTrack();
   await saveMetaNow();
