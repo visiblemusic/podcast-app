@@ -24,7 +24,7 @@
     border:1px solid var(--border); border-radius:12px; padding:6px 12px; margin-bottom:14px; }
   .tape-title-block { display:flex; flex-direction:column; align-items:flex-start; line-height:1.15; }
   .tape-title { font-weight:700; font-size:14px; text-transform:uppercase; letter-spacing:.1em; color:var(--amber); white-space:nowrap; }
-  .tape-version { font-size:9px; color:var(--dim); }
+  .tape-version { font-size:12px; color:var(--dim); }
   .tbtn { width:50px; height:50px; border-radius:50%; border:none; flex-shrink:0; cursor:pointer;
     display:flex; align-items:center; justify-content:center; font-size:18px; }
   #recordBtn { background:var(--red); color:var(--text); }
@@ -109,7 +109,7 @@
     <div class="notice" id="notice"></div>
 
     <div class="transport" style="flex-wrap:wrap;">
-      <div class="tape-title-block"><div class="tape-title">Tape</div><div class="tape-version" id="versionTag">v10</div></div>
+      <div class="tape-title-block"><div class="tape-title">Tape</div><div class="tape-version" id="versionTag">v10.1</div></div>
       <button id="toStartBtn" class="tbtn" style="font-size:16px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back to start">|◀</button>
       <button id="skipBackBtn" class="tbtn" style="font-size:12px;background:var(--panel);border:1px solid var(--border);color:var(--text);" aria-label="Back 10 seconds">-10s</button>
       <button id="recordBtn" class="tbtn" aria-label="Record">●</button>
@@ -310,6 +310,7 @@ const timeSelectionBtn = document.getElementById('timeSelectionBtn');
 timeSelectionBtn.addEventListener('click', () => {
   timeSelectionMode = !timeSelectionMode;
   timeSelectionBtn.classList.toggle('active', timeSelectionMode);
+  timelineOuter.style.touchAction = timeSelectionMode ? 'none' : 'pan-x pan-y';
   if (!timeSelectionMode) { timeSelection = null; renderTimeSelectionOverlay(); }
 });
 const zoomInBtn = document.getElementById('zoomInBtn');
@@ -1103,6 +1104,7 @@ function exitEditMode() {
   if (activeEditClipId) { activeEditClipId = null; activeEditType = null; renderLanes(); }
 }
 function onSelectionPointerDown(e) {
+  if (e.preventDefault) e.preventDefault();
   closeContextMenu();
   const sec = xToSec(e.clientX);
   selStartDrag = { startX:e.clientX, startSec:sec, moved:false };
